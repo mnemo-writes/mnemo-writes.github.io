@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lot</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0e0e12;
+  color: #8a8880;
+  font-family: Georgia, 'Times New Roman', serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1rem 4rem;
+  min-height: 100vh;
+  user-select: none;
+}
+h1 {
+  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: #706858;
+  margin-bottom: 1.3rem;
+}
+canvas {
+  display: block;
+  cursor: crosshair;
+}
+.hint {
+  font-size: 0.68rem;
+  color: #2a2a2a;
+  margin-top: 0.6rem;
+  letter-spacing: 0.06em;
+  transition: opacity 1.2s ease;
+}
+#reading {
+  max-width: 440px;
+  margin-top: 1.5rem;
+  line-height: 2;
+  font-size: 0.8rem;
+}
+#reading p {
+  margin-bottom: 0.2rem;
+  opacity: 0;
+  color: #585048;
+  animation: fadeIn 1s ease forwards;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+#stats {
+  margin-top: 1rem;
+  font-size: 0.7rem;
+  color: #333;
+  letter-spacing: 0.08em;
+  text-align: center;
+  line-height: 1.8;
+}
+#certifyBtn {
+  margin-top: 1.2rem;
+  background: none;
+  border: 1px solid #2a2a2a;
+  color: #555;
+  padding: 0.4rem 1.4rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.4s ease;
+  display: none;
+}
+#certifyBtn:hover {
+  border-color: #4a4a3a;
+  color: #8a8060;
+}
+#certifyBtn.ready { display: inline-block; }
+#certifyBtn.done { display: none; }
+</style>
+</head>
+<body>
+
+<h1>lot</h1>
+<canvas id="c"></canvas>
+<p class="hint" id="hint">click a bolt to test it</p>
+<div id="stats"></div>
+<button id="certifyBtn">certify remainder</button>
+<div id="reading"></div>
+
+<script>
+(() => {
+  const COLS = 20;
+  const ROWS = 10;
+  const N = COLS * ROWS;
+  const CELL = 28;
+  const PAD = 2;
+  const BOLT_R = 10;
+  const GROOVE_R = 8;
+  const W = COLS * CELL;
+  const H = ROWS * CELL;
+  const dpr = window.devicePixelRatio || 1;
+
+  const canvas = document.getElementById('c');
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const readEl = document.getElementById('reading');
+  const statsEl = document.getElementById('stats');
+  const hintEl = document.getElementById('hint');
+  const certBtn = document.getElementById('certifyBtn');
+
+  function mulberry32(seed) {
+    return () => {
+      seed |= 0;
+      seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(7075);
+
+  const DEFECT_RATE = 0.03;
+  const bolts = [];
+  for (let i = 0; i < N; i++) {
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    const defective = rand() < DEFECT_RATE;
+    const grainAngle = rand() * Math.PI;
+    const fractures = [];
+    const nFrac = 3 + Math.floor(rand() * 4);
+    for (let f = 0; f < nFrac; f++) {
+      const a = rand() * Math.PI * 2;
+      const len = 0.3 + rand() * 0.7;
+      const curve = (rand() - 0.5) * 0.4;
+      fractures.push({ angle: a, length: len, curve, width: 0.4 + rand() * 0.8 });
+    }
+    bolts.push({
+      col, row,
+      cx: col * CELL + CELL / 2,
+      cy: row * CELL + CELL / 2,
+      defective,
+      grainAngle,
+      fractures,
+      tested: false,
+      testProgress: 0,
+      certified: false,
+      hovered: false,
+    });
+  }
+
+  let tested = 0;
+  let passed = 0;
+  let failed = 0;
+  let done = false;
+  let certifiedAt = 0;
+  let certFade = 0;
+  let animating = false;
+  const shown = new Set();
+
+  function boltColor(b) {
+    if (done && !b.tested) {
+      const t = Math.min(1, certFade);
+      const r = Math.round(74 + t * 38);
+      const g = Math.round(72 + t * 32);
+      const bl = Math.round(64 + t * 8);
+      return `rgb(${r}, ${g}, ${bl})`;
+    }
+    if (!b.tested) {
+      return b.hovered ? '#5a5548' : '#4a4840';
+    }
+    return 'transparent';
+  }
+
+  function testedOpacity() {
+    if (!done) return 1;
+    return Math.max(0.15, 1 - certFade * 0.7);
+  }
+
+  function grooveColor(b) {
+    if (!b.tested) return '#38352e';
+    return 'transparent';
+  }
+
+  function drawBolt(b) {
+    const { cx, cy } = b;
+
+    if (!b.tested) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, BOLT_R, 0, Math.PI * 2);
+      ctx.fillStyle = boltColor(b);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, GROOVE_R, 0, Math.PI * 2);
+      ctx.strokeStyle = grooveColor(b);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      const ga = b.grainAngle;
+      for (let i = -3; i <= 3; i++) {
+        const offset = i * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(
+          cx + Math.cos(ga) * BOLT_R + Math.cos(ga + Math.PI / 2) * offset,
+          cy + Math.sin(ga) * BOLT_R + Math.sin(ga + Math.PI / 2) * offset
+        );
+        ctx.lineTo(
+          cx - Math.cos(ga) * BOLT_R + Math.cos(ga + Math.PI / 2) * offset,
+          cy - Math.sin(ga) * BOLT_R + Math.sin(ga + Math.PI / 2) * offset
+        );
+        ctx.strokeStyle = 'rgba(90, 85, 70, 0.08)';
+        ctx.lineWidth = 0.3;
+        ctx.stroke();
+      }
+      return;
+    }
+
+    const p = b.testProgress;
+    if (p <= 0) return;
+
+    ctx.save();
+    ctx.globalAlpha = testedOpacity();
+
+    if (b.defective) {
+      for (const f of b.fractures) {
+        const len = f.length * BOLT_R * p;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        const ex = cx + Math.cos(f.angle) * len;
+        const ey = cy + Math.sin(f.angle) * len;
+        const cpx = (cx + ex) / 2 + Math.cos(f.angle + Math.PI / 2) * f.curve * len;
+        const cpy = (cy + ey) / 2 + Math.sin(f.angle + Math.PI / 2) * f.curve * len;
+        ctx.quadraticCurveTo(cpx, cpy, ex, ey);
+        ctx.strokeStyle = `rgba(150, 65, 50, ${p * 0.7})`;
+        ctx.lineWidth = f.width * p;
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, GROOVE_R * p * 0.6, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(130, 55, 45, ${p * 0.3})`;
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([2, 2]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GROOVE_R, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(90, 100, 75, ${p * 0.5})`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      const sep = b.fractures[0].angle;
+      const gap = 1.5 * p;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(sep) * gap, cy + Math.sin(sep) * gap,
+        GROOVE_R * 0.45, sep - Math.PI * 0.8, sep + Math.PI * 0.8);
+      ctx.strokeStyle = `rgba(90, 100, 75, ${p * 0.25})`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx - Math.cos(sep) * gap, cy - Math.sin(sep) * gap,
+        GROOVE_R * 0.45, sep + Math.PI * 0.2, sep + Math.PI * 1.8);
+      ctx.strokeStyle = `rgba(90, 100, 75, ${p * 0.25})`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0e0e12';
+    ctx.fillRect(0, 0, W, H);
+
+    for (const b of bolts) {
+      drawBolt(b);
+    }
+
+  }
+
+  function updateStats() {
+    if (tested === 0) {
+      statsEl.textContent = '';
+      return;
+    }
+
+    const remaining = N - tested;
+
+    let text = `tested: ${tested}`;
+    if (failed > 0) {
+      text += `  /  failed: ${failed}`;
+    } else {
+      text += `  /  all clean`;
+    }
+    text += `  /  remaining: ${remaining}`;
+
+    statsEl.textContent = text;
+  }
+
+  function observe(key, text) {
+    if (shown.has(key)) return;
+    shown.add(key);
+    const p = document.createElement('p');
+    p.textContent = text;
+    readEl.appendChild(p);
+  }
+
+  function checkObservations() {
+    if (tested === 1) {
+      if (failed === 0) {
+        observe('first-clean', 'Clean break along the groove. The circumferential stress riser did its work.');
+      } else {
+        observe('first-fail', 'Irregular fracture. The grain boundary let go where it shouldn\'t.');
+      }
+    }
+    if (tested === 3 && failed === 0) {
+      observe('three-clean', 'Three clean. One hundred and ninety-seven untouched.');
+      certBtn.classList.add('ready');
+    }
+    if (tested === 5 && failed === 0) {
+      observe('five-clean', 'Five for five. You could stop here.');
+    }
+    if (tested === 10 && failed === 0) {
+      observe('ten-clean', 'Ten fired, ten clean. You know something about the next hundred and ninety. Not because you tested them.');
+    }
+    if (tested === 20 && failed === 0) {
+      observe('twenty-clean', 'Twenty from two hundred. The bag is getting lighter. The bin is getting heavier.');
+    }
+    if (failed === 1) {
+      observe('first-fail-any', 'One failure changes everything. The remaining lot is no longer the same population.');
+      if (tested >= 10 && !done) {
+        certBtn.textContent = 'certify anyway';
+        certBtn.classList.add('ready');
+      }
+    }
+    if (failed >= 2) {
+      observe('multi-fail', `${failed} failures in ${tested} samples. The lot is telling you something.`);
+      if (!done) {
+        certBtn.textContent = 'certify anyway';
+        certBtn.classList.add('ready');
+      }
+    }
+    if (tested >= 50 && failed === 0) {
+      observe('fifty', 'Fifty destroyed. One hundred and fifty promised. The evidence keeps going in the bin.');
+    }
+    if (tested >= 100 && failed === 0) {
+      observe('hundred', 'Half the lot, broken. The certainty is almost total. The cost is half of everything.');
+    }
+  }
+
+  function certify() {
+    if (done) return;
+    done = true;
+    certifiedAt = Date.now();
+    certBtn.classList.remove('ready');
+    certBtn.classList.add('done');
+
+    for (const b of bolts) {
+      if (!b.tested) {
+        b.certified = true;
+      }
+    }
+
+    const remaining = N - tested;
+
+    if (failed === 0) {
+      observe('certified',
+        `Certified: ${remaining}. Based on ${tested} you destroyed. The bin holds everything you know. The bag holds everything you promise.`
+      );
+    } else {
+      observe('certified-fail',
+        `You certified ${remaining} from a lot that showed ${failed} failure${failed > 1 ? 's' : ''} in ${tested} samples. That is a choice.`
+      );
+    }
+
+    hintEl.style.opacity = '0';
+
+    const fadeStart = Date.now();
+    const fadeDur = 3000;
+    function fadeFrame() {
+      certFade = Math.min(1, (Date.now() - fadeStart) / fadeDur);
+      draw();
+      if (certFade < 1) requestAnimationFrame(fadeFrame);
+    }
+    requestAnimationFrame(fadeFrame);
+  }
+
+  function testBolt(b) {
+    if (b.tested || done) return;
+    b.tested = true;
+    tested++;
+    if (b.defective) {
+      failed++;
+    } else {
+      passed++;
+    }
+
+    animating = true;
+    const start = Date.now();
+    const dur = 400;
+    function anim() {
+      const t = Math.min(1, (Date.now() - start) / dur);
+      b.testProgress = easeOut(t);
+      draw();
+      updateStats();
+      if (t < 1) {
+        requestAnimationFrame(anim);
+      } else {
+        animating = false;
+        checkObservations();
+      }
+    }
+    requestAnimationFrame(anim);
+  }
+
+  function easeOut(t) {
+    return 1 - (1 - t) * (1 - t);
+  }
+
+  function getBoltAt(mx, my) {
+    for (const b of bolts) {
+      const dx = mx - b.cx;
+      const dy = my - b.cy;
+      if (dx * dx + dy * dy <= BOLT_R * BOLT_R) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (animating || done) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    const b = getBoltAt(mx, my);
+    if (b && !b.tested) {
+      hintEl.style.opacity = '0';
+      testBolt(b);
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (done) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    let changed = false;
+    for (const b of bolts) {
+      const dx = mx - b.cx;
+      const dy = my - b.cy;
+      const over = dx * dx + dy * dy <= BOLT_R * BOLT_R && !b.tested;
+      if (b.hovered !== over) {
+        b.hovered = over;
+        changed = true;
+      }
+    }
+    if (changed && !animating) draw();
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    let changed = false;
+    for (const b of bolts) {
+      if (b.hovered) { b.hovered = false; changed = true; }
+    }
+    if (changed && !animating) draw();
+  });
+
+  certBtn.addEventListener('click', certify);
+
+  draw();
+  updateStats();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thompson Grids</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #faf9f6;
+  color: #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+}
+h1 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.3rem;
+}
+.note {
+  font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 1.5rem;
+  max-width: 520px;
+  text-align: center;
+  line-height: 1.5;
+}
+canvas {
+  border: 1px solid #ddd;
+  background: #fff;
+  margin-bottom: 1.5rem;
+}
+.presets {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1.2rem;
+}
+button {
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+button:hover { border-color: #888; color: #222; }
+button.active { background: #2a2a2a; color: #fff; border-color: #2a2a2a; }
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+  width: 100%;
+  max-width: 480px;
+}
+.slider-row label {
+  font-size: 0.75rem;
+  color: #888;
+  min-width: 55px;
+  text-align: right;
+}
+.slider-row input[type=range] { flex: 1; }
+.slider-row .val {
+  font-size: 0.7rem;
+  color: #aaa;
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+</style>
+</head>
+<body>
+
+<h1>Thompson Grids</h1>
+<p class="note">
+  D'Arcy Thompson, 1917: draw one species on a Cartesian grid,
+  deform the coordinates, and the grid reveals a related species.
+  The difference between forms is variation within a constrained
+  morphospace, not free invention.
+</p>
+
+<div class="presets" id="presets"></div>
+<canvas id="c" width="580" height="580"></canvas>
+<div id="sliders"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+const PAD = 50;
+
+let gridN = 14;
+let blend = 0;
+let current = 'pomacanthus';
+
+const transforms = {
+  pomacanthus: (x, y) => {
+    const cx = x - 0.5, cy = y - 0.5;
+    const r2 = cx * cx + cy * cy;
+    const eq = Math.max(1 - 4 * cy * cy, 0.1);
+    return [0.5 + cx * (1 + 0.55 * r2 * eq),
+            0.5 + cy * (1 + 0.18 * r2)];
+  },
+
+  sternoptyx: (x, y) => {
+    return [x + 0.36 * (y - 0.5), y];
+  },
+
+  mola: (x, y) => {
+    const cx = x - 0.5, cy = y - 0.5;
+    return [0.5 + cx * (0.5 + 0.35 * x),
+            0.5 + cy * (1 + 0.5 * Math.max(1 - 4 * cx * cx, 0))];
+  },
+
+  baboon: (x, y) => {
+    return [x + 0.25 * x * x,
+            y + 0.15 * x * (y - 0.35)];
+  }
+};
+
+const labels = {
+  pomacanthus: 'Scarus → Pomacanthus',
+  sternoptyx: 'Argyropelecus → Sternoptyx',
+  mola: 'Diodon → Mola',
+  baboon: 'Skull → Baboon'
+};
+
+function apply(x, y) {
+  const [tx, ty] = transforms[current](x, y);
+  return [x + blend * (tx - x), y + blend * (ty - y)];
+}
+
+function toCanvas(gx, gy) {
+  const range = 1.6;
+  const off = (1 - range) / 2;
+  const s = (W - 2 * PAD) / range;
+  return [PAD + (gx - off) * s, PAD + (gy - off) * s];
+}
+
+function drawGrid(fn, color, lw) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  const sub = gridN * 4;
+  for (let i = 0; i <= gridN; i++) {
+    ctx.beginPath();
+    for (let j = 0; j <= sub; j++) {
+      const [tx, ty] = fn(j / sub, i / gridN);
+      const [cx, cy] = toCanvas(tx, ty);
+      j === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  }
+  for (let j = 0; j <= gridN; j++) {
+    ctx.beginPath();
+    for (let i = 0; i <= sub; i++) {
+      const [tx, ty] = fn(j / gridN, i / sub);
+      const [cx, cy] = toCanvas(tx, ty);
+      i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawFish(fn, stroke, lw) {
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  const N = 150;
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * Math.PI * 2;
+    const bw = 0.135 * (1 + 0.25 * Math.cos(t));
+    const rx = 0.5 + 0.22 * Math.cos(t);
+    const ry = 0.5 + bw * Math.sin(t);
+    const [tx, ty] = fn(rx, ry);
+    const [cx, cy] = toCanvas(tx, ty);
+    i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  // tail fin
+  ctx.beginPath();
+  const tail = [[0.24, 0.42], [0.28, 0.5], [0.24, 0.58]];
+  tail.forEach((p, i) => {
+    const [tx, ty] = fn(p[0], p[1]);
+    const [cx, cy] = toCanvas(tx, ty);
+    i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+  });
+  ctx.stroke();
+
+  // eye
+  const [ex, ey] = fn(0.65, 0.48);
+  const [ecx, ecy] = toCanvas(ex, ey);
+  ctx.fillStyle = stroke;
+  ctx.beginPath();
+  ctx.arc(ecx, ecy, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const id = (x, y) => [x, y];
+  drawGrid(id, '#e8e4de', 0.5);
+  drawFish(id, '#d8d3ca', 1.2);
+  drawGrid(apply, '#2a2a2a', 0.8);
+  drawFish(apply, '#c45a3c', 2.2);
+}
+
+// UI
+const presetBox = document.getElementById('presets');
+for (const [key, label] of Object.entries(labels)) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.onclick = () => {
+    current = key;
+    presetBox.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    draw();
+  };
+  if (key === current) btn.classList.add('active');
+  presetBox.appendChild(btn);
+}
+
+const sliderBox = document.getElementById('sliders');
+function addSlider(name, min, max, init, cb) {
+  const row = document.createElement('div');
+  row.className = 'slider-row';
+  const lbl = document.createElement('label');
+  lbl.textContent = name;
+  const inp = document.createElement('input');
+  inp.type = 'range'; inp.min = min; inp.max = max; inp.value = init;
+  const val = document.createElement('span');
+  val.className = 'val'; val.textContent = init;
+  inp.oninput = () => { val.textContent = inp.value; cb(+inp.value); };
+  row.append(lbl, inp, val);
+  sliderBox.appendChild(row);
+  return inp;
+}
+
+addSlider('Morph', 0, 100, 0, v => { blend = v / 100; draw(); });
+addSlider('Grid', 6, 28, gridN, v => { gridN = v; draw(); });
+
+draw();
+</script>
+</body>
+</html>

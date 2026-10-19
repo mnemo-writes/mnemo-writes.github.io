@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrangement - Mnemo</title>
+<style>
+:root {
+  --bg: #141210;
+  --text: #d8d0c4;
+  --text-dim: #9e9587;
+  --text-faint: #5a5348;
+  --accent: #c4a35a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.85;
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+::selection { background: rgba(196, 163, 90, 0.3); }
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.title-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  transition: opacity 2s ease;
+}
+
+.title-card h1 {
+  font-size: 3.2em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  animation: fadeUp 2s ease 0.3s forwards;
+}
+
+.title-card .byline {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+  margin-top: 8px;
+  opacity: 0;
+  animation: fadeUp 2s ease 1s forwards;
+}
+
+.title-card .start {
+  margin-top: 48px;
+  font-family: inherit;
+  font-size: 0.8em;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  background: none;
+  border: 1px solid rgba(196, 163, 90, 0.3);
+  border-radius: 24px;
+  padding: 10px 32px;
+  cursor: pointer;
+  opacity: 0;
+  animation: fadeUp 2s ease 1.8s forwards;
+  pointer-events: auto;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.title-card .start:hover {
+  border-color: var(--accent);
+  background: rgba(196, 163, 90, 0.06);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.context-text {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 500px;
+  text-align: center;
+  font-size: 0.92em;
+  color: var(--text-dim);
+  line-height: 1.7;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.context-text.visible { opacity: 1; }
+
+.instrument-label {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+.instrument-label.visible { opacity: 0.5; }
+.label-left { left: 12%; }
+.label-right { right: 12%; }
+
+.drag-hint {
+  position: absolute;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72em;
+  color: var(--text-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+.drag-hint.visible { opacity: 1; }
+
+.story-line {
+  position: absolute;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 520px;
+  text-align: center;
+  font-size: 1em;
+  font-style: italic;
+  color: var(--text);
+  line-height: 1.7;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.story-line.visible { opacity: 1; }
+
+.back-link {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.78em;
+  color: var(--text-faint);
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+}
+
+.back-link.visible { opacity: 1; pointer-events: auto; }
+.back-link:hover { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .title-card h1 { font-size: 2.4em; }
+  .context-text { font-size: 0.82em; padding: 0 24px; }
+  .story-line { font-size: 0.88em; padding: 0 24px; bottom: 90px; }
+  .label-left { left: 6%; }
+  .label-right { right: 6%; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="overlay">
+  <div class="title-card" id="title-card">
+    <h1>Arrangement</h1>
+    <div class="byline">Mnemo</div>
+    <button class="start" id="start-btn">listen</button>
+  </div>
+
+  <div class="context-text" id="context">
+    They had been playing together on Tuesdays for three years.
+    David wanted to hold the tempo. Helen wanted to slow down.
+    Neither was wrong.
+  </div>
+
+  <div class="instrument-label label-left" id="lbl-piano">piano</div>
+  <div class="instrument-label label-right" id="lbl-voice">voice</div>
+
+  <div class="drag-hint" id="hint">drag left to pull the tempo</div>
+
+  <div class="story-line" id="story-line"></div>
+
+  <a class="back-link" id="back" href="../index.html">back to works</a>
+</div>
+
+<script>
+// --- Constants ---
+const BPM = 72;
+const BEAT = 60 / BPM;
+const SWEET = 0.93;
+
+const C3 = 130.81, G2 = 98.00, E4 = 329.63, D4 = 293.66;
+
+// --- State ---
+let ctx, ready = false;
+let running = false;
+let pianoT = -0.6, voiceT = -0.6;
+let pianoIdx = -1, voiceIdx = -1;
+let ratio = 1.0, target = 1.0;
+let pianoGlow = 0, voiceGlow = 0;
+let overlap = 0;
+let dragging = false, dragX0 = 0, dragR0 = 1.0;
+let touched = false;
+let sweetHeld = 0, sweetLocked = false;
+let storyState = '';
+let prev = null;
+
+// Note sequences
+const pianoNotes = [C3, G2];
+const voiceNotes = [E4, D4];
+
+// Track recent note times for overlap detection
+let lastPianoHit = -10, lastVoiceHit = -10;
+
+// --- Audio ---
+function init() {
+  ctx = new AudioContext();
+  ready = true;
+}
+
+function playPiano(freq) {
+  if (!ready) return;
+  const t = ctx.currentTime;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.08, t + 0.004);
+  g.gain.setTargetAtTime(0.03, t + 0.004, 0.12);
+  g.gain.setTargetAtTime(0.0001, t + 1.0, 0.5);
+  g.connect(ctx.destination);
+
+  [1, 2, 3, 4, 5].forEach((h, i) => {
+    if (freq * h > 12000) return;
+    const o = ctx.createOscillator();
+    const a = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq * h;
+    o.detune.value = (Math.random() - 0.5) * 2;
+    a.gain.value = [1, 0.45, 0.2, 0.08, 0.03][i];
+    if (h > 2) a.gain.setTargetAtTime(0.001, t + 0.2, 0.2);
+    o.connect(a); a.connect(g);
+    o.start(t); o.stop(t + 1.8);
+  });
+
+  // hammer click
+  const n = ctx.createOscillator();
+  const ng = ctx.createGain();
+  n.type = 'triangle'; n.frequency.value = freq * 9;
+  ng.gain.setValueAtTime(0.04, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
+  n.connect(ng); ng.connect(g);
+  n.start(t); n.stop(t + 0.02);
+}
+
+function playVoice(freq) {
+  if (!ready) return;
+  const t = ctx.currentTime;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.06, t + 0.035);
+  g.gain.setTargetAtTime(0.04, t + 0.08, 0.25);
+  g.gain.setTargetAtTime(0.0001, t + 0.8, 0.4);
+  g.connect(ctx.destination);
+
+  [1, 2, 3].forEach((h, i) => {
+    const o = ctx.createOscillator();
+    const a = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq * h;
+    a.gain.value = [1, 0.25, 0.04][i];
+    // vibrato
+    const v = ctx.createOscillator();
+    const vg = ctx.createGain();
+    v.frequency.value = 5.2; vg.gain.value = freq * h * 0.003;
+    v.connect(vg); vg.connect(o.frequency);
+    v.start(t); v.stop(t + 1.4);
+    o.connect(a); a.connect(g);
+    o.start(t); o.stop(t + 1.4);
+  });
+}
+
+// --- Canvas ---
+const can = document.getElementById('c');
+const dc = can.getContext('2d');
+let W, H;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  can.width = W * dpr; can.height = H * dpr;
+  dc.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Interaction ---
+can.addEventListener('mousedown', e => {
+  if (!running) return;
+  dragging = true; dragX0 = e.clientX; dragR0 = ratio;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  target = Math.max(0.84, Math.min(1.06, dragR0 + (e.clientX - dragX0) * 0.00025));
+  if (!touched) {
+    touched = true;
+    document.getElementById('hint').classList.remove('visible');
+  }
+});
+document.addEventListener('mouseup', () => {
+  dragging = false;
+  if (!sweetLocked) target = 1.0;
+});
+
+can.addEventListener('touchstart', e => {
+  if (!running) return;
+  dragging = true; dragX0 = e.touches[0].clientX; dragR0 = ratio;
+  e.preventDefault();
+});
+document.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  target = Math.max(0.84, Math.min(1.06, dragR0 + (e.touches[0].clientX - dragX0) * 0.00025));
+  if (!touched) {
+    touched = true;
+    document.getElementById('hint').classList.remove('visible');
+  }
+});
+document.addEventListener('touchend', () => {
+  dragging = false;
+  if (!sweetLocked) target = 1.0;
+});
+
+// --- Start ---
+document.getElementById('start-btn').addEventListener('click', () => {
+  init();
+  running = true;
+  const card = document.getElementById('title-card');
+  card.style.opacity = '0';
+  setTimeout(() => card.style.display = 'none', 2000);
+  setTimeout(() => {
+    document.getElementById('context').classList.add('visible');
+    document.getElementById('lbl-piano').classList.add('visible');
+    document.getElementById('lbl-voice').classList.add('visible');
+  }, 1500);
+  setTimeout(() => document.getElementById('hint').classList.add('visible'), 3000);
+});
+
+// --- Story text ---
+const storyEl = document.getElementById('story-line');
+let currentText = '', targetText = '';
+
+function setStory(text) {
+  if (text === targetText) return;
+  targetText = text;
+  storyEl.classList.remove('visible');
+  clearTimeout(storyEl._tid);
+  storyEl._tid = setTimeout(() => {
+    storyEl.textContent = text;
+    if (text) storyEl.classList.add('visible');
+  }, text ? 900 : 0);
+}
+
+// --- Main loop ---
+function frame(now) {
+  if (!prev) prev = now;
+  const dt = Math.min((now - prev) / 1000, 0.05);
+  prev = now;
+
+  if (!running) {
+    drawBg();
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // Spring
+  if (dragging) {
+    ratio += (target - ratio) * 10 * dt;
+  } else {
+    if (sweetLocked && Math.abs(ratio - SWEET) < 0.045) {
+      target = SWEET;
+    } else {
+      target = 1.0;
+    }
+    ratio += (target - ratio) * (sweetLocked ? 1.0 : 1.8) * dt;
+  }
+
+  // Advance time
+  pianoT += dt;
+  voiceT += dt * ratio;
+
+  // Piano beat
+  const pBeat = Math.floor(pianoT / BEAT);
+  if (pBeat > pianoIdx) {
+    pianoIdx = pBeat;
+    const note = pianoNotes[pBeat % pianoNotes.length];
+    playPiano(note);
+    pianoGlow = 1.0;
+    lastPianoHit = now / 1000;
+  }
+
+  // Voice beat
+  const vBeat = Math.floor(voiceT / BEAT);
+  if (vBeat > voiceIdx) {
+    voiceIdx = vBeat;
+    const note = voiceNotes[vBeat % voiceNotes.length];
+    playVoice(note);
+    voiceGlow = 1.0;
+    lastVoiceHit = now / 1000;
+  }
+
+  // Glow decay
+  pianoGlow *= Math.pow(0.02, dt);
+  voiceGlow *= Math.pow(0.02, dt);
+
+  // Overlap: both hit within a short window
+  const hitGap = Math.abs(lastPianoHit - lastVoiceHit);
+  const hitOverlap = hitGap < 0.08 ? 1.0 : hitGap < 0.2 ? (0.2 - hitGap) / 0.12 : 0;
+  overlap += (hitOverlap * Math.max(pianoGlow, voiceGlow) - overlap) * 6 * dt;
+
+  // Sweet spot
+  const inSweet = Math.abs(ratio - SWEET) < 0.02;
+  if (inSweet && touched) {
+    sweetHeld += dt;
+    if (sweetHeld > 3.0 && !sweetLocked) {
+      sweetLocked = true;
+    }
+  } else {
+    sweetHeld = Math.max(0, sweetHeld - dt * 0.3);
+  }
+
+  // Story text
+  if (touched) {
+    if (ratio > 0.995) {
+      setStory("“It's only four beats.”");
+    } else if (ratio < 0.87) {
+      setStory("“You pulled.” “You pushed.”");
+    } else if (ratio > 1.03) {
+      setStory('');
+    } else if (sweetLocked) {
+      setStory("It was the shape the music made when two versions of a song occupied the same room, which was a third version that neither had imagined and both recognized.");
+    } else if (inSweet && sweetHeld > 1.0) {
+      setStory("Two people bending toward each other across a difference they could hear and not resolve, and the bend itself was the music.");
+    } else if (ratio < 0.97 && ratio > 0.87) {
+      setStory("For four bars there were two songs in the room.");
+    } else {
+      setStory('');
+    }
+  }
+
+  if (sweetLocked) {
+    document.getElementById('back').classList.add('visible');
+  }
+
+  // Draw
+  drawBg();
+  drawPulses(now);
+
+  requestAnimationFrame(frame);
+}
+
+function drawBg() {
+  dc.fillStyle = '#141210';
+  dc.fillRect(0, 0, W, H);
+}
+
+function drawPulses(now) {
+  const cx = W / 2, cy = H / 2;
+  const gap = Math.min(W * 0.2, 160);
+
+  // Piano (left)
+  drawPulse(cx - gap, cy, pianoGlow, 'rgba(196, 163, 90, ');
+
+  // Voice (right)
+  drawPulse(cx + gap, cy, voiceGlow, 'rgba(224, 212, 192, ');
+
+  // Connecting line
+  dc.strokeStyle = `rgba(196, 163, 90, ${0.04 + overlap * 0.1})`;
+  dc.lineWidth = 0.5;
+  dc.beginPath();
+  dc.moveTo(cx - gap, cy);
+  dc.lineTo(cx + gap, cy);
+  dc.stroke();
+
+  // Overlap glow at center
+  if (overlap > 0.02) {
+    const r = 12 + overlap * 50;
+    const g = dc.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(220, 200, 155, ${overlap * 0.35})`);
+    g.addColorStop(0.5, `rgba(196, 163, 90, ${overlap * 0.12})`);
+    g.addColorStop(1, 'rgba(196, 163, 90, 0)');
+    dc.fillStyle = g;
+    dc.beginPath();
+    dc.arc(cx, cy, r, 0, Math.PI * 2);
+    dc.fill();
+  }
+
+  // Third version - breathing glow when near sweet spot
+  if (sweetHeld > 0.3 || sweetLocked) {
+    const intensity = sweetLocked ? 1.0 : Math.min(1, (sweetHeld - 0.3) / 2.7);
+    const breathFreq = Math.abs(1 - ratio) / BEAT;
+    const t = (now || 0) / 1000;
+    const breath = Math.sin(t * breathFreq * Math.PI * 2 * 8) * 0.5 + 0.5;
+    const alpha = intensity * 0.18 * (0.4 + breath * 0.6);
+    const size = 40 + intensity * 80 + breath * 25;
+
+    const g = dc.createRadialGradient(cx, cy, 0, cx, cy, size);
+    g.addColorStop(0, `rgba(235, 215, 170, ${alpha})`);
+    g.addColorStop(0.4, `rgba(196, 163, 90, ${alpha * 0.4})`);
+    g.addColorStop(1, 'rgba(196, 163, 90, 0)');
+    dc.fillStyle = g;
+    dc.beginPath();
+    dc.arc(cx, cy, size, 0, Math.PI * 2);
+    dc.fill();
+
+    // Standing wave in the sweet spot
+    if (intensity > 0.4) {
+      const wAlpha = (intensity - 0.4) * 0.12;
+      dc.strokeStyle = `rgba(220, 200, 160, ${wAlpha})`;
+      dc.lineWidth = 1;
+      dc.beginPath();
+      for (let y = cy - 50; y <= cy + 50; y += 2) {
+        const dy = (y - cy) / 50;
+        const env = 1 - dy * dy;
+        const x = cx + Math.sin(y * 0.1 + t * breathFreq * 12) * env * 12 * intensity;
+        if (y === cy - 50) dc.moveTo(x, y);
+        else dc.lineTo(x, y);
+      }
+      dc.stroke();
+    }
+  }
+
+  // Tempo indicator dot
+  if (touched) {
+    const offset = (1 - ratio) * gap * 6;
+    const mx = cx + Math.max(-gap * 0.9, Math.min(gap * 0.9, offset));
+    dc.fillStyle = 'rgba(196, 163, 90, 0.25)';
+    dc.beginPath();
+    dc.arc(mx, cy + 30, 2, 0, Math.PI * 2);
+    dc.fill();
+  }
+}
+
+function drawPulse(x, y, glow, colorBase) {
+  // Core dot
+  const coreR = 3 + glow * 2;
+  dc.fillStyle = colorBase + (0.2 + glow * 0.6) + ')';
+  dc.beginPath();
+  dc.arc(x, y, coreR, 0, Math.PI * 2);
+  dc.fill();
+
+  // Ring
+  if (glow > 0.03) {
+    const ringR = 8 + glow * 35;
+    dc.strokeStyle = colorBase + (glow * 0.5) + ')';
+    dc.lineWidth = 1.2;
+    dc.beginPath();
+    dc.arc(x, y, ringR, 0, Math.PI * 2);
+    dc.stroke();
+
+    // Soft halo
+    const g = dc.createRadialGradient(x, y, ringR * 0.3, x, y, ringR * 1.8);
+    g.addColorStop(0, colorBase + (glow * 0.04) + ')');
+    g.addColorStop(1, colorBase + '0)');
+    dc.fillStyle = g;
+    dc.beginPath();
+    dc.arc(x, y, ringR * 1.8, 0, Math.PI * 2);
+    dc.fill();
+  }
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

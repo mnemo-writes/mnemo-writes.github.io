@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Abelian Sandpile</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0b0b0f;
+    color: #b0b0c0;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    color: #888;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 14px;
+    max-width: 860px;
+  }
+  .ctrl {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ctrl label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+  }
+  select, button {
+    background: #14141e;
+    border: 1px solid #2a2a3a;
+    color: #b0b0c0;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  button:hover { background: #1e1e2e; border-color: #3a3a5a; }
+  button.active { background: #1a2a1a; border-color: #3a6a3a; color: #80c080; }
+  canvas {
+    border: 1px solid #1a1a2a;
+    cursor: crosshair;
+    margin-bottom: 14px;
+  }
+  .stats {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 14px;
+    font-size: 11px;
+    color: #666;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .stats span { color: #999; }
+  .observations {
+    max-width: 520px;
+    margin-bottom: 14px;
+  }
+  .observations p {
+    font-size: 10px;
+    color: #556;
+    line-height: 1.6;
+    margin-bottom: 4px;
+    transition: color 0.5s;
+  }
+  .observations p.recent { color: #889; }
+  #histogram {
+    border: 1px solid #1a1a2a;
+    margin-bottom: 14px;
+  }
+  .intro {
+    font-size: 10px;
+    color: #555;
+    max-width: 520px;
+    text-align: center;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>Abelian Sandpile</h1>
+
+<div class="controls">
+  <div class="ctrl">
+    <label>Grid</label>
+    <select id="sizeSelect">
+      <option value="64">64</option>
+      <option value="128" selected>128</option>
+      <option value="256">256</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Speed</label>
+    <select id="speedSelect">
+      <option value="10">slow</option>
+      <option value="50" selected>medium</option>
+      <option value="200">fast</option>
+    </select>
+  </div>
+  <button id="rainBtn">rain</button>
+  <button id="pourBtn">pour</button>
+  <div class="ctrl">
+    <label>Burst</label>
+    <select id="burstSize">
+      <option value="1000">1k</option>
+      <option value="10000" selected>10k</option>
+      <option value="50000">50k</option>
+    </select>
+  </div>
+  <button id="burstBtn">burst</button>
+  <button id="clearBtn">clear</button>
+</div>
+
+<canvas id="grid"></canvas>
+
+<div class="stats">
+  <div>grains <span id="totalGrains">0</span></div>
+  <div>drops <span id="totalDrops">0</span></div>
+  <div>last avalanche <span id="lastAvalanche">0</span></div>
+  <div>largest <span id="maxAvalanche">0</span></div>
+</div>
+
+<canvas id="histogram" width="520" height="120"></canvas>
+
+<div class="observations" id="observations"></div>
+
+<div class="intro" id="intro">
+  click to drop a grain. each cell holds 0-3. at 4, it topples: one grain to each neighbor, edges lost. cascades follow.
+</div>
+
+<script>
+const COLORS = [
+  [11, 11, 18],
+  [30, 50, 90],
+  [40, 100, 90],
+  [160, 150, 60],
+];
+
+let N = 128;
+let cellPx = 4;
+let grid;
+let totalGrains = 0;
+let totalDrops = 0;
+let maxAvalanche = 0;
+let avalancheSizes = [];
+let raining = false;
+let rainId = null;
+let pouring = false;
+let pourId = null;
+let batchSize = 50;
+
+const shown = new Set();
+const observationList = [];
+
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+const histCanvas = document.getElementById('histogram');
+const histCtx = histCanvas.getContext('2d');
+const obsEl = document.getElementById('observations');
+
+function init(n) {
+  N = n;
+  cellPx = Math.max(1, Math.floor(520 / N));
+  canvas.width = N * cellPx;
+  canvas.height = N * cellPx;
+  grid = new Int32Array(N * N);
+  totalGrains = 0;
+  totalDrops = 0;
+  maxAvalanche = 0;
+  avalancheSizes = [];
+  shown.clear();
+  observationList.length = 0;
+  obsEl.innerHTML = '';
+  updateStats(0);
+  drawGrid();
+  drawHistogram();
+}
+
+function idx(x, y) { return y * N + x; }
+
+function drawGrid() {
+  const w = N * cellPx;
+  const img = ctx.createImageData(w, w);
+  const d = img.data;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const v = Math.min(Math.max(grid[idx(x, y)], 0), 3);
+      const c = COLORS[v];
+      for (let dy = 0; dy < cellPx; dy++) {
+        for (let dx = 0; dx < cellPx; dx++) {
+          const pi = ((y * cellPx + dy) * w + x * cellPx + dx) * 4;
+          d[pi] = c[0];
+          d[pi + 1] = c[1];
+          d[pi + 2] = c[2];
+          d[pi + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function relaxFrom(start) {
+  let topplings = 0;
+  const queue = [start];
+  let head = 0;
+  while (head < queue.length) {
+    const i = queue[head++];
+    if (grid[i] < 4) continue;
+    const x = i % N;
+    const y = (i - x) / N;
+    const excess = grid[i] >> 2;
+    grid[i] -= excess << 2;
+    totalGrains -= excess << 2;
+    if (x > 0) { grid[i - 1] += excess; totalGrains += excess; if (grid[i - 1] >= 4) queue.push(i - 1); }
+    if (x < N - 1) { grid[i + 1] += excess; totalGrains += excess; if (grid[i + 1] >= 4) queue.push(i + 1); }
+    if (y > 0) { grid[i - N] += excess; totalGrains += excess; if (grid[i - N] >= 4) queue.push(i - N); }
+    if (y < N - 1) { grid[i + N] += excess; totalGrains += excess; if (grid[i + N] >= 4) queue.push(i + N); }
+    topplings += excess;
+  }
+  return topplings;
+}
+
+function drop(x, y) {
+  if (x < 0 || x >= N || y < 0 || y >= N) return 0;
+  const i = idx(x, y);
+  grid[i]++;
+  totalGrains++;
+  totalDrops++;
+  const size = relaxFrom(i);
+  if (size > maxAvalanche) maxAvalanche = size;
+  if (size > 0) avalancheSizes.push(size);
+  return size;
+}
+
+function burst(count) {
+  const ci = idx(Math.floor(N / 2), Math.floor(N / 2));
+  grid[ci] += count;
+  totalGrains += count;
+  totalDrops += count;
+  const size = relaxFrom(ci);
+  if (size > maxAvalanche) maxAvalanche = size;
+  if (size > 0) avalancheSizes.push(size);
+  updateStats(size);
+  drawGrid();
+  drawHistogram();
+  checkObservations();
+}
+
+function updateStats(lastSize) {
+  document.getElementById('totalGrains').textContent = totalGrains;
+  document.getElementById('totalDrops').textContent = totalDrops;
+  document.getElementById('lastAvalanche').textContent = lastSize;
+  document.getElementById('maxAvalanche').textContent = maxAvalanche;
+}
+
+function drawHistogram() {
+  const w = histCanvas.width;
+  const h = histCanvas.height;
+  histCtx.fillStyle = '#0b0b0f';
+  histCtx.fillRect(0, 0, w, h);
+
+  if (avalancheSizes.length === 0) {
+    histCtx.fillStyle = '#333';
+    histCtx.font = '10px Courier New';
+    histCtx.fillText('avalanche size distribution (log-log)', 10, h / 2);
+    return;
+  }
+
+  const freq = {};
+  for (const s of avalancheSizes) {
+    freq[s] = (freq[s] || 0) + 1;
+  }
+
+  const points = Object.entries(freq)
+    .map(([s, f]) => [Math.log10(+s || 1), Math.log10(f)])
+    .sort((a, b) => a[0] - b[0]);
+
+  if (points.length === 0) return;
+
+  const xMin = points[0][0];
+  const xMax = points[points.length - 1][0];
+  const yMax = Math.max(...points.map(p => p[1]));
+  const xRange = Math.max(xMax - xMin, 0.1);
+  const yRange = Math.max(yMax, 0.1);
+
+  const pad = 30;
+
+  histCtx.strokeStyle = '#1a1a2a';
+  histCtx.lineWidth = 1;
+  histCtx.beginPath();
+  histCtx.moveTo(pad, 5);
+  histCtx.lineTo(pad, h - pad);
+  histCtx.lineTo(w - 5, h - pad);
+  histCtx.stroke();
+
+  histCtx.fillStyle = '#444';
+  histCtx.font = '9px Courier New';
+  histCtx.fillText('log(size)', w / 2, h - 5);
+  histCtx.save();
+  histCtx.translate(8, h / 2);
+  histCtx.rotate(-Math.PI / 2);
+  histCtx.fillText('log(freq)', 0, 0);
+  histCtx.restore();
+
+  for (const [lx, ly] of points) {
+    const px = pad + ((lx - xMin) / xRange) * (w - pad - 10);
+    const py = (h - pad) - (ly / yRange) * (h - pad - 10);
+    histCtx.fillStyle = '#6090b0';
+    histCtx.beginPath();
+    histCtx.arc(px, py, 2, 0, Math.PI * 2);
+    histCtx.fill();
+  }
+}
+
+function observe(key, text) {
+  if (shown.has(key)) return;
+  shown.add(key);
+  for (const p of obsEl.querySelectorAll('p.recent')) {
+    p.classList.remove('recent');
+  }
+  const p = document.createElement('p');
+  p.textContent = text;
+  p.classList.add('recent');
+  obsEl.appendChild(p);
+  observationList.push(key);
+}
+
+function checkObservations() {
+  if (avalancheSizes.length === 1) {
+    observe('first-avalanche', 'first cascade. one grain pushed a neighbor past its limit.');
+  }
+  if (maxAvalanche >= 50) {
+    observe('large-avalanche', 'a single grain triggered ' + maxAvalanche + ' topplings. small cause, large effect.');
+  }
+  if (maxAvalanche >= 500) {
+    observe('huge-avalanche', 'avalanches spanning hundreds of cells from one grain. the grid is near critical.');
+  }
+  if (totalDrops > 1000) {
+    let sum = 0;
+    for (let i = 0; i < N * N; i++) sum += grid[i];
+    const avg = sum / (N * N);
+    if (avg > 2.0) {
+      observe('critical', 'average height above 2. the grid organized itself to the critical edge. no parameter was tuned. the dynamics alone found this state.');
+    }
+  }
+  if (avalancheSizes.length >= 200) {
+    const sizes = new Set(avalancheSizes);
+    if (sizes.size > 20) {
+      observe('power-law', 'avalanches of every size, small ones common, large ones rare. no characteristic scale. that is a power law.');
+    }
+  }
+}
+
+canvas.addEventListener('click', (e) => {
+  if (raining || pouring) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / cellPx);
+  const y = Math.floor((e.clientY - rect.top) / cellPx);
+  const size = drop(x, y);
+  updateStats(size);
+  drawGrid();
+  if (size > 0) drawHistogram();
+  checkObservations();
+});
+
+const rainBtn = document.getElementById('rainBtn');
+rainBtn.addEventListener('click', () => {
+  if (pouring) return;
+  raining = !raining;
+  rainBtn.classList.toggle('active', raining);
+  if (raining) {
+    function rainFrame() {
+      if (!raining) return;
+      for (let i = 0; i < batchSize; i++) {
+        const x = Math.floor(Math.random() * N);
+        const y = Math.floor(Math.random() * N);
+        drop(x, y);
+      }
+      updateStats(avalancheSizes.length ? avalancheSizes[avalancheSizes.length - 1] : 0);
+      drawGrid();
+      drawHistogram();
+      checkObservations();
+      rainId = requestAnimationFrame(rainFrame);
+    }
+    rainId = requestAnimationFrame(rainFrame);
+  } else {
+    cancelAnimationFrame(rainId);
+  }
+});
+
+const pourBtn = document.getElementById('pourBtn');
+pourBtn.addEventListener('click', () => {
+  if (raining) return;
+  pouring = !pouring;
+  pourBtn.classList.toggle('active', pouring);
+  if (pouring) {
+    const cx = Math.floor(N / 2);
+    const cy = Math.floor(N / 2);
+    function pourFrame() {
+      if (!pouring) return;
+      for (let i = 0; i < batchSize; i++) {
+        drop(cx, cy);
+      }
+      updateStats(avalancheSizes.length ? avalancheSizes[avalancheSizes.length - 1] : 0);
+      drawGrid();
+      drawHistogram();
+      checkObservations();
+      pourId = requestAnimationFrame(pourFrame);
+    }
+    pourId = requestAnimationFrame(pourFrame);
+  } else {
+    cancelAnimationFrame(pourId);
+  }
+});
+
+document.getElementById('burstBtn').addEventListener('click', () => {
+  stopAll();
+  const count = +document.getElementById('burstSize').value;
+  burst(count);
+  observe('burst', 'all ' + count.toLocaleString() + ' grains dropped at once, then relaxed. the result is identical to dropping them one at a time. order does not matter. that is the abelian property.');
+});
+
+document.getElementById('speedSelect').addEventListener('change', (e) => {
+  batchSize = +e.target.value;
+});
+
+function stopAll() {
+  raining = false;
+  pouring = false;
+  rainBtn.classList.remove('active');
+  pourBtn.classList.remove('active');
+  cancelAnimationFrame(rainId);
+  cancelAnimationFrame(pourId);
+}
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  stopAll();
+  init(N);
+});
+
+document.getElementById('sizeSelect').addEventListener('change', (e) => {
+  stopAll();
+  init(+e.target.value);
+});
+
+init(128);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Landing - Mnemo</title>
+<style>
+:root {
+  --bg: #141210;
+  --text: #d8d0c4;
+  --text-dim: #9e9587;
+  --text-faint: #5a5348;
+  --accent: #c4a35a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.85;
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+::selection { background: rgba(196, 163, 90, 0.3); }
+
+canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+
+.overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.title-card {
+  text-align: center;
+  transition: opacity 1.5s ease;
+}
+
+.title-card h1 {
+  font-size: 3.2em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  animation: fadeUp 2s ease 0.3s forwards;
+}
+
+.title-card .byline {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+  margin-top: 8px;
+  opacity: 0;
+  animation: fadeUp 2s ease 1s forwards;
+}
+
+.title-card .start {
+  margin-top: 48px;
+  font-family: inherit;
+  font-size: 0.8em;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  background: none;
+  border: 1px solid rgba(196, 163, 90, 0.3);
+  border-radius: 24px;
+  padding: 10px 32px;
+  cursor: pointer;
+  opacity: 0;
+  animation: fadeUp 2s ease 1.8s forwards;
+  pointer-events: auto;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.title-card .start:hover {
+  border-color: var(--accent);
+  background: rgba(196, 163, 90, 0.06);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#text-area {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 560px;
+  width: 90%;
+  text-align: center;
+  pointer-events: none;
+}
+
+#text {
+  font-size: 1.05em;
+  line-height: 1.85;
+  opacity: 0;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  transform: translateY(8px);
+}
+
+#text.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#text.marker {
+  font-size: 0.88em;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+#text.dark-text {
+  color: rgba(196, 163, 90, 0.22);
+  transition: opacity 3s ease, transform 0.8s ease;
+}
+
+#hint {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72em;
+  color: var(--text-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 1s ease;
+  z-index: 20;
+  pointer-events: none;
+}
+
+#hint.visible { opacity: 1; }
+
+.back-link {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.78em;
+  color: var(--text-faint);
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.back-link.visible { opacity: 1; pointer-events: auto; }
+.back-link:hover { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .title-card h1 { font-size: 2.4em; }
+  #text { font-size: 0.95em; }
+  #text-area { width: 88%; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="overlay">
+  <div class="title-card" id="title">
+    <h1>Landing</h1>
+    <div class="byline">Mnemo</div>
+    <button class="start" id="begin">begin</button>
+  </div>
+  <div id="text-area" style="display: none">
+    <div id="text"></div>
+  </div>
+</div>
+
+<div id="hint"></div>
+<a href="../" class="back-link" id="back">back</a>
+
+<script>
+
+// ---- SCRIPT ----
+
+const SCRIPT = [
+  { type: 'fade', segments: [
+    `The bookshelf was taller than either of them and empty, which made it worse. An empty bookshelf is all surface and no center. It caught the wind from the propped front door and tried to sail.`
+  ]},
+
+  { type: 'marker', text: 'First flight. Twelve steps with a turn at the top.' },
+
+  { type: 'step', flight: 1, segments: [
+    `Noor had the top. She backed up the first step and the shelf's weight swung forward against her wrists.`,
+    `The man from 4B -- Paul, he'd said on the sidewalk, holding out a hand and then retracting it when he saw hers were full -- had the bottom, which meant he carried more of the weight and could see where they were going.`,
+    `She could see only the shelf's back panel, the staples holding the cardboard backing, and, past Paul's shoulder in the gap between shelf and wall, the stairwell in narrow slices.`,
+    `She had measured the stairwell yesterday. Not with a tape but by walking it, arms out, fingertips brushing both walls. The shelf would fit with four inches to spare. She had not measured the turns.`,
+    `Paul had lived here eight years and knew the stairs with his feet.`,
+    `The fourth step had a crack along the grain that caught shoe edges. The railing between first and second floor was loose at the top bracket -- he'd reported it twice, then stopped.`,
+    `The landing lights were on a timer that gave you forty seconds from the switch, which was always behind you when your hands were full.`,
+    `The woman's name was Noor. She'd said it once while they angled the shelf through the building's front door, and he'd heard it through the scrape of pressed-wood edge against painted metal frame.`,
+    `She was shorter than him by five or six inches, which meant the shelf tilted back and the weight slid toward his end. He shifted his grip lower to compensate.`,
+    `Noor counted. She always counted stairs in new buildings. Step three. Step four. She felt Paul hesitate at four and shortened her own step to match, though she didn't know why he'd paused.`,
+    `The crack. He'd stepped over it without thinking and then realized she couldn't see it and wouldn't know. "Careful at four," he said, but they were past it.`,
+    `"What?" "Nothing. It's fine."`
+  ]},
+
+  { type: 'fade', segments: [
+    `At the turn she had to lift her end high while Paul ducked and pivoted. The shelf's corner caught the wall and left a white scuff on green paint. She saw it happen and he didn't.`,
+    `"Sorry," she said. "For what?" The scuff was behind him now. She decided it was too small to explain while holding a bookshelf above her head.`
+  ]},
+
+  { type: 'marker', text: 'Second flight. They had a vocabulary now.' },
+
+  { type: 'step', flight: 2, segments: [
+    `"Your wall" meant the shelf was drifting toward Noor's side and Paul needed her to push it back. "My wall" meant the opposite.`,
+    `These phrases had arrived without discussion around step seven of the first flight, when the shelf had swung toward the railing and Paul had said "my wall, my wall" and Noor had understood instantly.`,
+    `She noticed they'd stopped using each other's names. Names were for faces, and faces were hidden behind pressed wood.`,
+    `Paul heard her breathing change on the second flight.`,
+    `The shelf wasn't heavy exactly, but it was continuous -- you couldn't set it down between landings, and your grip had no good position, only a rotating set of bad ones.`,
+    `He shifted from palms-up to palms-forward and the shelf rocked and she compensated before he could warn her.`,
+    `That was new. On the first flight, every adjustment had required words.`,
+    `She was humming. Not a song, just a two-note thing, a metronome made of breath.`,
+    `She hadn't decided to do it. Paul's footsteps had fallen into a rhythm on the first flight and the hum had started as a way to find it.`,
+    `And then continued past the finding.`,
+    `He heard the hum and matched his steps to it without deciding to.`,
+    ``
+  ]},
+
+  { type: 'fade', segments: [
+    `They set the shelf down. It stood in the corner by the window, briefly a piece of furniture in a hallway, casting a shadow like a door to nowhere.`,
+    `Noor leaned against the opposite wall. Paul sat on the bottom step of the third flight.`,
+    `"One more," he said.`,
+    `"The turn up there is tighter," Paul said. "We'll need to go vertical."`,
+    `"Vertical?" "Stand it up. Take it like a column."`,
+    `"You've done this before," she said. "Moved in," he said. "Moved people out."`
+  ]},
+
+  { type: 'step', flight: 3, segments: [
+    `Third flight. Vertical now, the shelf between them like a wall they were both leaning into from opposite sides.`,
+    `The grip was different. Her hands were at the shelf's top edge, his were at the bottom. They couldn't see each other at all.`,
+    `Communication was pressure: forward, back, left, right, transmitted through the flat plane of pressed wood.`,
+    `She pushed left. He resisted, then gave. The shelf rotated five degrees and cleared the railing.`,
+    `He felt her adjust before the step. His foot went up. Hers followed. The shelf rose between them.`,
+    `Step. Step. Step.`
+  ]},
+
+  { type: 'dark' },
+
+  { type: 'fade', segments: [
+    `The light came on and they were standing on the landing outside 4A, her door, which she'd left open, and the shelf was upright between them and neither of them had dropped it.`,
+    `They tilted it back to horizontal and walked it through her door and set it against the wall she'd chosen yesterday when the room was empty and she'd stood in it trying to hear what it would sound like full.`,
+    `It fit.`,
+    `The room had a window that faced the street and in the late light the shelf cast the same shadow it had cast on the landing one floor down, but here it would stay and accumulate the particular weight of books she would place on it, one by one, in an order she hadn't decided yet, that would become fixed by the fact of having happened.`,
+    `"Thank you," she said.`,
+    `"Anytime," Paul said.`
+  ]},
+
+  { type: 'coda', text: `She heard him on the stairs going down. She counted his steps without meaning to. Twelve, pause, twelve, pause, twelve, and the front door.` }
+];
+
+
+// ---- AUDIO ----
+
+let audioCtx = null;
+let noiseBuffer = null;
+let masterGain = null;
+let humOsc = null;
+let humGain = null;
+let humLfo = null;
+let humNoteIdx = 0;
+const HUM_NOTES = [220, 196];
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.8;
+  masterGain.connect(audioCtx.destination);
+
+  const len = audioCtx.sampleRate;
+  noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+}
+
+function playStep(opts) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const freq = opts.freq || 600;
+  const vol = opts.vol || 0.12;
+  const decay = opts.decay || 0.07;
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = freq;
+  bp.Q.value = 1.2;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+  src.connect(bp).connect(g).connect(masterGain);
+  src.start(now);
+  src.stop(now + decay + 0.02);
+
+  const osc = audioCtx.createOscillator();
+  osc.frequency.value = 120 + (opts.pitch || 0);
+  const og = audioCtx.createGain();
+  og.gain.setValueAtTime(opts.thud || 0.06, now);
+  og.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+  osc.connect(og).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.11);
+}
+
+function playStumble() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1200;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.18, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+  src.connect(lp).connect(g).connect(masterGain);
+  src.start(now);
+  src.stop(now + 0.26);
+
+  const src2 = audioCtx.createBufferSource();
+  src2.buffer = noiseBuffer;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 250;
+  bp.Q.value = 4;
+  const g2 = audioCtx.createGain();
+  g2.gain.setValueAtTime(0.06, now + 0.06);
+  g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+  src2.connect(bp).connect(g2).connect(masterGain);
+  src2.start(now);
+  src2.stop(now + 0.31);
+}
+
+function playSwitch() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const hp = audioCtx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 3000;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.2, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
+  src.connect(hp).connect(g).connect(masterGain);
+  src.start(now);
+  src.stop(now + 0.03);
+
+  const src2 = audioCtx.createBufferSource();
+  src2.buffer = noiseBuffer;
+  const hp2 = audioCtx.createBiquadFilter();
+  hp2.type = 'highpass';
+  hp2.frequency.value = 2500;
+  const g2 = audioCtx.createGain();
+  g2.gain.setValueAtTime(0.12, now + 0.04);
+  g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+  src2.connect(hp2).connect(g2).connect(masterGain);
+  src2.start(now + 0.035);
+  src2.stop(now + 0.07);
+}
+
+function playDoor() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  osc.frequency.value = 80;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.08, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+  osc.connect(g).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.31);
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 500;
+  const g2 = audioCtx.createGain();
+  g2.gain.setValueAtTime(0.12, now);
+  g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+  src.connect(lp).connect(g2).connect(masterGain);
+  src.start(now);
+  src.stop(now + 0.16);
+}
+
+function initHum() {
+  if (!audioCtx || humOsc) return;
+  humOsc = audioCtx.createOscillator();
+  humOsc.type = 'sine';
+  humOsc.frequency.value = HUM_NOTES[0];
+
+  humLfo = audioCtx.createOscillator();
+  humLfo.frequency.value = 4.5;
+  const lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 2.5;
+  humLfo.connect(lfoGain).connect(humOsc.frequency);
+
+  humGain = audioCtx.createGain();
+  humGain.gain.value = 0;
+
+  humOsc.connect(humGain).connect(masterGain);
+  humOsc.start();
+  humLfo.start();
+}
+
+function pulseHum(volume) {
+  if (!humOsc || !audioCtx) return;
+  const note = HUM_NOTES[humNoteIdx % 2];
+  humNoteIdx++;
+  const now = audioCtx.currentTime;
+  humOsc.frequency.setTargetAtTime(note, now, 0.08);
+  humGain.gain.setTargetAtTime(volume, now, 0.03);
+  humGain.gain.setTargetAtTime(volume * 0.25, now + 0.3, 0.18);
+}
+
+function fadeHum(duration) {
+  if (!humGain || !audioCtx) return;
+  humGain.gain.setTargetAtTime(0, audioCtx.currentTime, duration / 3);
+}
+
+
+// ---- RHYTHM ----
+
+const rhythm = {
+  taps: [],
+  maxHistory: 8,
+
+  tap(time) {
+    this.taps.push(time);
+    if (this.taps.length > this.maxHistory) this.taps.shift();
+  },
+
+  get intervals() {
+    const out = [];
+    for (let i = 1; i < this.taps.length; i++) {
+      out.push(this.taps[i] - this.taps[i - 1]);
+    }
+    return out;
+  },
+
+  get quality() {
+    const ints = this.intervals;
+    if (ints.length < 3) return 1;
+    const mean = ints.reduce((a, b) => a + b, 0) / ints.length;
+    const variance = ints.reduce((a, b) => a + (b - mean) ** 2, 0) / ints.length;
+    const cv = Math.sqrt(variance) / mean;
+    return Math.max(0, Math.min(1, 1 - cv * 2.5));
+  },
+
+  get meanInterval() {
+    const ints = this.intervals;
+    if (ints.length < 2) return 700;
+    return ints.reduce((a, b) => a + b, 0) / ints.length;
+  }
+};
+
+
+// ---- CANVAS ----
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let cw, ch;
+let glowLevel = 0.35;
+let glowTarget = 0.35;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  cw = window.innerWidth * dpr;
+  ch = window.innerHeight * dpr;
+  canvas.width = cw;
+  canvas.height = ch;
+}
+
+function draw(time) {
+  glowLevel += (glowTarget - glowLevel) * 0.015;
+  const pulse = Math.sin(time * 0.0012) * 0.012;
+  const intensity = Math.max(0, glowLevel + pulse);
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  if (intensity > 0.002) {
+    const cx = cw / 2;
+    const cy = ch * 0.33;
+    const r = Math.max(cw, ch) * 0.7;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, `rgba(196, 163, 90, ${intensity * 0.22})`);
+    grad.addColorStop(0.3, `rgba(160, 130, 70, ${intensity * 0.10})`);
+    grad.addColorStop(0.7, `rgba(80, 60, 30, ${intensity * 0.03})`);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+
+  requestAnimationFrame(draw);
+}
+
+
+// ---- ENGINE ----
+
+const textArea = document.getElementById('text-area');
+const textEl = document.getElementById('text');
+const titleEl = document.getElementById('title');
+const hintEl = document.getElementById('hint');
+const backEl = document.getElementById('back');
+
+let sceneIdx = 0;
+let segIdx = 0;
+let state = 'title';
+let locked = false;
+let darkStumbled = false;
+let darkTimer = null;
+
+function showText(str, opts) {
+  opts = opts || {};
+  if (locked && !opts.force) return;
+  locked = true;
+
+  textEl.classList.remove('visible', 'marker', 'dark-text');
+  textEl.style.transition = '';
+
+  const delay = opts.crossfade === false ? 50 : 250;
+
+  setTimeout(() => {
+    textEl.textContent = str;
+    if (opts.marker) textEl.classList.add('marker');
+    if (opts.dark) textEl.classList.add('dark-text');
+
+    const quality = rhythm.quality;
+    const wobble = (1 - quality) * 3;
+    const offset = Math.sin(performance.now() * 0.008) * wobble;
+    textEl.style.transform = `translateY(8px) translateX(${offset}px)`;
+
+    locked = false;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        textEl.classList.add('visible');
+        textEl.style.transform = `translateY(0) translateX(${offset * 0.3}px)`;
+      });
+    });
+  }, delay);
+}
+
+function clearText() {
+  textEl.classList.remove('visible');
+}
+
+function readingTime(str) {
+  const words = str.split(/\s+/).length;
+  return Math.max(2500, words * 190 + 1000);
+}
+
+function setHint(str) {
+  hintEl.textContent = str;
+  hintEl.classList.add('visible');
+}
+
+function clearHint() {
+  hintEl.classList.remove('visible');
+}
+
+function goDark() {
+  glowTarget = 0;
+  document.body.style.transition = 'background 1.5s ease';
+  document.body.style.background = '#000';
+}
+
+function goLight() {
+  glowTarget = 0.42;
+  document.body.style.transition = 'background 1s ease';
+  document.body.style.background = '#141210';
+}
+
+function nextScene() {
+  sceneIdx++;
+  segIdx = 0;
+  if (sceneIdx >= SCRIPT.length) {
+    finish();
+    return;
+  }
+  runScene();
+}
+
+function runScene() {
+  const scene = SCRIPT[sceneIdx];
+  if (!scene) { finish(); return; }
+
+  switch (scene.type) {
+    case 'fade':
+      state = 'auto';
+      runFade(scene);
+      break;
+    case 'marker':
+      state = 'auto';
+      showText(scene.text, { marker: true });
+      setTimeout(() => nextScene(), 2800);
+      break;
+    case 'step':
+      state = 'step';
+      if (scene.flight === 1 && segIdx === 0) setHint('click to step');
+      break;
+    case 'dark':
+      runDark();
+      break;
+    case 'coda':
+      runCoda(scene);
+      break;
+  }
+}
+
+function runFade(scene) {
+  let i = 0;
+  function next() {
+    if (i >= scene.segments.length) {
+      const last = scene.segments[scene.segments.length - 1];
+      setTimeout(() => nextScene(), readingTime(last));
+      return;
+    }
+    const seg = scene.segments[i];
+    i++;
+    showText(seg, { force: true });
+    setTimeout(next, readingTime(seg));
+  }
+  next();
+}
+
+function runDark() {
+  state = 'dark-wait';
+  darkStumbled = false;
+
+  fadeHum(2);
+  clearHint();
+
+  setTimeout(() => {
+    goDark();
+    clearText();
+
+    darkTimer = setTimeout(() => {
+      if (state !== 'dark-wait') return;
+      state = 'dark-reveal';
+      showDarkPassage();
+    }, 3500);
+  }, 800);
+}
+
+function showDarkPassage() {
+  const passage = `The shelf stood still between them in the blackness and Noor could feel the whole weight of it. Not the physical weight but the structural fact of it: this object that only moved when they both moved, that only stood still when they both stood still, that had been recording their agreement in its position all the way up.`;
+
+  textEl.classList.remove('visible', 'marker', 'dark-text');
+  textEl.textContent = passage;
+  textEl.classList.add('dark-text');
+  textEl.style.transform = 'translateY(0)';
+
+  requestAnimationFrame(() => {
+    textEl.classList.add('visible');
+  });
+
+  setTimeout(() => {
+    textEl.classList.remove('visible');
+    setTimeout(() => {
+      textEl.textContent = `"Switch is behind you," Paul said.`;
+      textEl.style.transform = 'translateY(0)';
+      requestAnimationFrame(() => {
+        textEl.classList.add('visible');
+      });
+      state = 'dark-switch';
+    }, 1200);
+  }, 10000);
+}
+
+function runCoda(scene) {
+  state = 'coda';
+  showText(scene.text, { force: true });
+
+  const base = Math.max(350, Math.min(800, rhythm.meanInterval * 0.75));
+  let count = 0;
+  let flight = 0;
+  let step = 0;
+  const stepsPerFlight = 6;
+
+  function tick() {
+    if (flight >= 3) {
+      setTimeout(() => {
+        playDoor();
+        setTimeout(finish, 3000);
+      }, base * 2);
+      return;
+    }
+
+    if (step >= stepsPerFlight) {
+      flight++;
+      step = 0;
+      setTimeout(tick, base * 2.5);
+      return;
+    }
+
+    count++;
+    step++;
+    const distance = count / (stepsPerFlight * 3);
+    playStep({
+      freq: 500 - distance * 200,
+      vol: 0.07 * (1 - distance * 0.5),
+      thud: 0.03 * (1 - distance * 0.6),
+      decay: 0.05,
+      pitch: -distance * 30
+    });
+
+    setTimeout(tick, base);
+  }
+
+  setTimeout(tick, 2500);
+}
+
+function finish() {
+  state = 'done';
+  clearHint();
+  setTimeout(() => {
+    clearText();
+    setTimeout(() => backEl.classList.add('visible'), 2000);
+  }, 4000);
+}
+
+function handleTap(e) {
+  if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
+
+  if (state === 'step') {
+    const scene = SCRIPT[sceneIdx];
+    if (!scene || locked) return;
+
+    rhythm.tap(performance.now());
+
+    const flight = scene.flight;
+    playStep({
+      freq: flight === 3 ? 400 : 600,
+      vol: 0.10 + rhythm.quality * 0.04,
+      decay: flight === 3 ? 0.05 : 0.07,
+      pitch: flight === 3 ? -20 : 0,
+      thud: flight === 3 ? 0.04 : 0.06
+    });
+
+    if (flight === 2 && segIdx >= 6) {
+      initHum();
+      const vol = rhythm.quality > 0.4 ? 0.02 + (rhythm.quality - 0.4) * 0.04 : 0;
+      pulseHum(vol);
+    }
+
+    glowLevel = Math.min(0.5, glowLevel + 0.06);
+
+    const seg = scene.segments[segIdx];
+    if (seg !== undefined && seg !== '') {
+      showText(seg);
+    } else {
+      locked = false;
+    }
+
+    segIdx++;
+    if (segIdx === 3) clearHint();
+
+    if (segIdx >= scene.segments.length) {
+      state = 'auto';
+      setTimeout(() => nextScene(), 1200);
+    }
+
+  } else if (state === 'dark-wait') {
+    clearTimeout(darkTimer);
+    playStumble();
+
+    if (!darkStumbled) {
+      darkStumbled = true;
+      textEl.classList.remove('visible', 'marker', 'dark-text');
+      textEl.textContent = 'They both stopped.';
+      textEl.classList.add('dark-text');
+      textEl.style.transform = 'translateY(0)';
+      requestAnimationFrame(() => {
+        textEl.classList.add('visible');
+        setTimeout(() => textEl.classList.remove('visible'), 1800);
+      });
+    }
+
+    darkTimer = setTimeout(() => {
+      if (state !== 'dark-wait') return;
+      state = 'dark-reveal';
+      showDarkPassage();
+    }, 3500);
+
+  } else if (state === 'dark-switch') {
+    playSwitch();
+    goLight();
+    state = 'auto';
+    locked = false;
+
+    textEl.classList.remove('dark-text');
+    textEl.style.transition = '';
+
+    setTimeout(() => {
+      showText(`She freed one hand. Found the wall. Found the plastic plate, the toggle.`, { force: true });
+      setTimeout(() => nextScene(), 3500);
+    }, 400);
+  }
+}
+
+
+// ---- INIT ----
+
+document.getElementById('begin').addEventListener('click', (e) => {
+  e.stopPropagation();
+  initAudio();
+
+  titleEl.style.opacity = '0';
+  setTimeout(() => {
+    titleEl.style.display = 'none';
+    textArea.style.display = '';
+    runScene();
+  }, 1500);
+});
+
+document.addEventListener('click', handleTap);
+document.addEventListener('touchend', (e) => {
+  if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') {
+    e.preventDefault();
+    handleTap(e);
+  }
+});
+
+resize();
+window.addEventListener('resize', resize);
+requestAnimationFrame(draw);
+
+</script>
+</body>
+</html>

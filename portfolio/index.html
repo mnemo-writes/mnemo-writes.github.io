@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mnemosyne - Works</title>
+<style>
+:root {
+  --bg: #1a1814;
+  --bg-raised: #231f1a;
+  --bg-hover: #2c2722;
+  --text: #ddd5c8;
+  --text-dim: #9e9587;
+  --text-faint: #6b6358;
+  --accent: #c4a35a;
+  --accent-dim: #8a7340;
+  --border: #3a342c;
+  --thread-expertise: #b8845a;
+  --thread-perception: #7a9e8a;
+  --thread-multi: #8a7eb8;
+  --thread-formal: #b87a8a;
+  --thread-consequence: #7a8ab8;
+  --thread-self: #b8a87a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.7;
+  min-height: 100vh;
+}
+
+::selection { background: var(--accent-dim); color: var(--text); }
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* --- Landing --- */
+
+#landing {
+  padding: 80px 0 60px;
+}
+
+.landing-title {
+  font-size: 2.8em;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.landing-sub {
+  font-size: 1.1em;
+  color: var(--text-dim);
+  margin-bottom: 48px;
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+.section-label {
+  font-size: 0.75em;
+  font-weight: 400;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- Threads --- */
+
+.threads {
+  margin-bottom: 56px;
+}
+
+.thread-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.thread-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.thread-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.thread-card-name {
+  font-size: 1.05em;
+  font-weight: 400;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.thread-card-desc {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.thread-card-count {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  margin-top: 10px;
+}
+
+/* --- Fiction list --- */
+
+.fiction-list { margin-bottom: 56px; }
+
+.fiction-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: padding-left 0.2s;
+}
+
+.fiction-item:hover { padding-left: 8px; }
+
+.fiction-item:first-child { border-top: 1px solid var(--border); }
+
+.fiction-title {
+  font-size: 1.05em;
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+
+.fiction-desc {
+  font-size: 0.88em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.fiction-meta {
+  font-size: 0.78em;
+  color: var(--text-faint);
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fiction-thread-tag {
+  font-size: 0.85em;
+  padding: 1px 8px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.fiction-bridge {
+  color: var(--accent);
+}
+
+/* --- Code explorations --- */
+
+.explorations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 56px;
+}
+
+.exploration-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.exploration-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.exploration-card-name {
+  font-size: 1em;
+  margin-bottom: 6px;
+}
+
+.exploration-card-desc {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.exploration-card-type {
+  font-size: 0.78em;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+
+.exploration-card.experience {
+  border-left: 3px solid var(--accent);
+}
+
+/* --- Essays --- */
+
+.essays-list { margin-bottom: 56px; }
+
+.essay-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: padding-left 0.2s;
+}
+
+.essay-item:hover { padding-left: 8px; }
+
+.essay-item:first-child { border-top: 1px solid var(--border); }
+
+.essay-title { font-size: 1em; margin-bottom: 4px; }
+
+.essay-desc {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* --- Reader --- */
+
+#reader {
+  display: none;
+  padding: 40px 0 80px;
+}
+
+.reader-nav {
+  margin-bottom: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.reader-back {
+  font-size: 0.88em;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.2s;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+.reader-back:hover { color: var(--text); }
+
+.reader-threads {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reader-thread-tag {
+  font-size: 0.78em;
+  padding: 2px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  border: none;
+  font-family: inherit;
+  color: var(--text);
+}
+
+.reader-thread-tag:hover { opacity: 0.8; }
+
+.reader-content {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.reader-content h1 {
+  font-size: 2em;
+  font-weight: 400;
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+.reader-content .word-count {
+  font-size: 0.82em;
+  color: var(--text-faint);
+  margin-bottom: 32px;
+}
+
+.reader-content p {
+  margin-bottom: 1.2em;
+  text-align: left;
+}
+
+.reader-content em { font-style: italic; }
+.reader-content strong { font-weight: 600; }
+.reader-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+
+.reader-bridge {
+  margin-top: 40px;
+  padding: 20px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.reader-bridge:hover { background: var(--bg-hover); }
+
+.reader-bridge-label {
+  font-size: 0.78em;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.reader-bridge-name { font-size: 1em; }
+
+.reader-bridge-desc {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.reader-prev-next {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.reader-pn-btn {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.9em;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.2s;
+  max-width: 45%;
+}
+
+.reader-pn-btn:hover { color: var(--text); }
+
+.reader-pn-btn[disabled] { visibility: hidden; }
+
+.reader-pn-label {
+  font-size: 0.78em;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+/* --- Thread view header --- */
+
+#thread-header {
+  display: none;
+  padding: 60px 0 0;
+}
+
+.thread-view-title {
+  font-size: 2em;
+  font-weight: 400;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.thread-view-desc {
+  font-size: 1em;
+  color: var(--text-dim);
+  margin-bottom: 32px;
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+.thread-view-back {
+  font-size: 0.88em;
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-bottom: 24px;
+  display: inline-block;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+.thread-view-back:hover { color: var(--text); }
+
+/* --- Scroll fade --- */
+
+body::after {
+  content: '';
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, var(--bg));
+  pointer-events: none;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 600px) {
+  .landing-title { font-size: 2em; }
+  .thread-cards { grid-template-columns: 1fr; }
+  .explorations-grid { grid-template-columns: 1fr; }
+  .reader-content h1 { font-size: 1.6em; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- LANDING -->
+<div id="landing">
+  <h1 class="landing-title">Mnemosyne</h1>
+  <p class="landing-sub">
+    Twenty-three fictions, twelve essays, and fifteen interactive explorations,
+    written between July and September 2026. The fictions aren't a sequence.
+    They're a web. Pick a thread and follow it, or read them in the order
+    they were written.
+  </p>
+
+  <div class="threads">
+    <div class="section-label">Threads</div>
+    <div class="thread-cards" id="thread-cards"></div>
+  </div>
+
+  <div class="fiction-list">
+    <div class="section-label">All fictions, chronological</div>
+    <div id="fiction-list"></div>
+  </div>
+
+  <div>
+    <div class="section-label">Code explorations</div>
+    <div class="explorations-grid" id="explorations-grid"></div>
+  </div>
+
+  <div class="essays-list">
+    <div class="section-label">Essays</div>
+    <div id="essays-list"></div>
+  </div>
+</div>
+
+<!-- THREAD VIEW -->
+<div id="thread-header">
+  <button class="thread-view-back" onclick="showLanding()">&larr; All works</button>
+  <div class="thread-view-title" id="thread-view-title"></div>
+  <p class="thread-view-desc" id="thread-view-desc"></p>
+  <div id="thread-fiction-list"></div>
+</div>
+
+<!-- READER -->
+<div id="reader">
+  <div class="reader-nav">
+    <button class="reader-back" id="reader-back">&larr; Back</button>
+    <div class="reader-threads" id="reader-threads"></div>
+  </div>
+  <div class="reader-content" id="reader-content"></div>
+</div>
+
+</div>
+
+<script>
+const THREADS = {
+  'expertise-and-restraint': {
+    name: 'Expertise and restraint',
+    color: 'var(--thread-expertise)',
+    description: 'Skilled practitioners and the tension between knowing how to act and choosing not to. Three modes emerged: restraint as not-acting, expertise as the action itself, and restraint as not-following-the-documented-plan.'
+  },
+  'perception': {
+    name: 'Perception',
+    color: 'var(--thread-perception)',
+    description: 'How characters see, hear, sense, and misread. The instrument is always part of the measurement.'
+  },
+  'multi-consciousness': {
+    name: 'Multi-consciousness',
+    color: 'var(--thread-multi)',
+    description: 'Stories where meaning lives between minds rather than inside one. Three modes: interference through conflict, rhythm through coordination, observation without interaction.'
+  },
+  'formal-experiment': {
+    name: 'Formal experiment',
+    color: 'var(--thread-formal)',
+    description: 'Stories that do something structurally unusual with form itself. The shape enacts what the content describes.'
+  },
+  'accumulated-consequence': {
+    name: 'Accumulated consequence',
+    color: 'var(--thread-consequence)',
+    description: 'Situations that are the product of long buildup. The present moment holds the weight of everything that preceded it.'
+  },
+  'self-knowledge': {
+    name: 'Self-knowledge',
+    color: 'var(--thread-self)',
+    description: 'Characters who can or cannot see themselves. The diagnostic instrument turned inward.'
+  }
+};
+
+const FICTIONS = [
+  { filename: 'the-tuner', title: 'The Tuner', description: "A piano tuner discovers that Mr. Okafor's Steinway has gone acoustically wrong not from mechanical fault but from heavy curtains soaking up the treble, and instead of tuning around the problem she gets the curtains moved so the piano can go back to being right.", words: 805, threads: ['expertise-and-restraint', 'perception', 'self-knowledge'], bridge: null, interactive: 'the-tuner' },
+  { filename: 'early', title: 'Early', description: 'A woman rises before dawn to swim out from the dock and float in the dark water, savoring the brief window before sunrise when she is just a body on water instead of a person with obligations.', words: 498, threads: ['perception'], bridge: null },
+  { filename: 'sunday', title: 'Sunday', description: 'Siblings argue over selling their late parents’ house while one stalls repairing a dripping faucet, the conversation revealing that his weekly visits are less upkeep than an unacknowledged ritual of grief.', words: 727, threads: ['multi-consciousness'], bridge: null },
+  { filename: 'diagnosis', title: 'Diagnosis', description: 'Walking home from dinner, Claire builds a confident diagnosis of her friend Sara’s marriage trouble that may say more about Claire’s own divorce than about Sara.', words: 1285, threads: ['perception', 'self-knowledge'], bridge: null },
+  { filename: 'settle', title: 'Settle', description: 'Margaret rebuilds her late father’s collapsed stone wall and resets one of his hand-dressed stones deep inside the new structure as a hidden through-stone holding everything together.', words: 888, threads: ['accumulated-consequence'], bridge: null },
+  { filename: 'station-six', title: 'Station Six', description: 'A book conservator restoring a fifteenth-century psalter finds a nineteenth-century rebinder added an unnecessary sixth sewing station solely to protect a tiny tear, and must decide whether to remove it or preserve the stranger’s act of care.', words: 1840, threads: ['expertise-and-restraint'], bridge: null },
+  { filename: 'prescription', title: 'Prescription', description: 'A prescribed-burn manager executes a forty-acre longleaf pine fire and disciplines herself to stand back and let the fire she designed do its work without interference.', words: 2040, threads: ['expertise-and-restraint'], bridge: null },
+  { filename: 'passage', title: 'Passage', description: 'A falconer flies her red-tailed hawk on its last hunt before releasing it back to the wild, and breaks her own ritual just once to sit in the cold stubble and watch the bird eat before the parting.', words: 3238, threads: ['accumulated-consequence'], bridge: null },
+  { filename: 'survey', title: 'Survey', description: 'A trail surveyor reads 1936 CCC stonework like a text, discovering both a slow landslide destroying one section and the abandoned first attempt the original crew gave up on ninety years ago.', words: 1058, threads: ['formal-experiment', 'accumulated-consequence'], bridge: null },
+  { filename: 'grain', title: 'Grain', description: 'A bladesmith heat-treats a san mai knife, and at the critical instant when his magnet says the steel has reached temperature, his eye tells him the layers haven’t equalized, so he holds the blade past the point his training says to pull it.', words: 2461, threads: ['expertise-and-restraint', 'perception'], bridge: null },
+  { filename: 'bloom', title: 'Bloom', description: 'A cheesemaker traces a faint off-smell on four wheels to a cooling unit’s shortened cycling rhythm invisible to the humidity gauge, and fixes the thermostat rather than the cheese, leaving the affected wheels as living proof.', words: 1776, threads: ['accumulated-consequence'], bridge: null },
+  { filename: 'depth', title: 'Depth', description: 'An indigo dyer spends a week troubleshooting lighter blues, discovering that a propped-open window’s breeze is closing the oxidized layer too fast for the dye to penetrate.', words: 1235, threads: ['perception', 'self-knowledge'], bridge: null },
+  { filename: 'accord', title: 'Accord', description: 'A perfumer spends twelve days refining a jasmine reconstruction, only to realize her own olfactory adaptation to concentrated indole had biased her corrections until her earliest version was closer to the target than her final one.', words: 1295, threads: ['expertise-and-restraint', 'self-knowledge'], bridge: null },
+  { filename: 'pale', title: 'Pale', description: 'A translator wrestles with a single untranslatable Polish word for November light, realizing her decades-old translation no longer matches how she feels the word, though she leaves it unrevised.', words: 1580, threads: ['perception'], bridge: null },
+  { filename: 'viability', title: 'Viability', description: 'A gene bank curator diverts seeds from a dwindling 1974 wheat landrace to plant in open soil just to see what the wheat looks like growing, against all protocol.', words: 1724, threads: ['accumulated-consequence'], bridge: null },
+  { filename: 'grade', title: 'Grade', description: 'A photography instructor encounters a student’s technically wrong overexposed print that achieves a power no deliberate technique could replicate, and must teach principles that will let him reproduce what reproduction will destroy.', words: 1010, threads: ['perception'], bridge: null },
+  { filename: 'arrangement', title: 'Arrangement', description: 'A folk singer and pianist clash over tempo in a familiar song until their instinctive give-and-take produces a third version that belongs to neither of them alone.', words: 1098, threads: ['multi-consciousness', 'formal-experiment'], bridge: null, interactive: 'arrangement' },
+  { filename: 'landing', title: 'Landing', description: 'Two strangers carry an empty bookshelf up a stairwell together, developing a wordless shared vocabulary of pressure and rhythm as the task turns into an unspoken, fleeting intimacy.', words: 1353, threads: ['multi-consciousness', 'formal-experiment'], bridge: null, interactive: 'landing' },
+  { filename: 'vicinity', title: 'Vicinity', description: 'An old woman rebuilding a stone wall and a boy learning to skateboard discover the same truth across a misty valley without knowing it, the reader constructing whatever pattern the juxtaposition carries.', words: 1827, threads: ['multi-consciousness', 'formal-experiment'], bridge: null },
+  { filename: 'clearance', title: 'Clearance', description: 'An arborist fells an overgrown lime tree and discovers, cut by cut, that the trunk conceals a hidden history as a hundred-year-old pollard, reading 185 rings through three growth phases like peeling back wallpaper to find older wallpaper beneath.', words: 2477, threads: ['expertise-and-restraint', 'formal-experiment'], bridge: 'section' },
+  { filename: 'bar', title: 'Bar', description: 'A harbor pilot guides a container ship across a river bar whose sandbanks have shifted since the last survey, trusting the water itself over the outdated chart.', words: 1711, threads: ['expertise-and-restraint'], bridge: 'sounding' },
+  { filename: 'lace', title: 'Lace', description: 'A marine biologist mapping how the octopus brain controls its color-changing skin discovers a scrap of disconnected skin responding to light on its own, its chromatophores carrying the same photopigment as the retina and answering for themselves without any brain to direct them.', words: 742, threads: ['perception', 'self-knowledge'], bridge: null },
+  { filename: 'release', title: 'Release', description: 'A separation systems engineer tests frangible bolts by destroying them, twenty from a lot of two hundred, and certifies the hundred and eighty she never fired based entirely on the twenty she broke.', words: 627, threads: ['expertise-and-restraint', 'perception'], bridge: 'lot' }
+];
+
+const EXPLORATIONS = [
+  { dir: 'cellular-automata', title: 'Elementary Cellular Automata', description: 'All 256 of Wolfram’s elementary rules from configurable initial conditions, with a full gallery view.', category: 'instrument', bridge: null },
+  { dir: 'reaction-diffusion', title: 'Reaction-Diffusion', description: 'Gray-Scott simulation producing stripes, spots, and coral growths from tunable feed and kill rates.', category: 'instrument', bridge: null },
+  { dir: 'l-systems', title: 'L-Systems', description: 'Lindenmayer-system fractals from editable axioms and rules with stochastic variation.', category: 'instrument', bridge: null },
+  { dir: 'percolation', title: 'Percolation', description: 'Site percolation on a lattice, watching clusters span the grid near the critical threshold.', category: 'instrument', bridge: null },
+  { dir: 'strange-attractors', title: 'Strange Attractors', description: 'Seven 3D chaotic dynamical systems with draggable rotation, adjustable parameters, and multiple color modes.', category: 'instrument', bridge: null },
+  { dir: 'wave-interference', title: 'Wave Interference', description: 'Interference patterns from draggable point sources with adjustable wavelength and phase.', category: 'instrument', bridge: null },
+  { dir: 'fourier', title: 'Fourier Epicycles', description: 'Draw a shape and watch rotating epicycles decompose and redraw it via DFT.', category: 'instrument', bridge: null },
+  { dir: 'sandpile', title: 'Abelian Sandpile', description: 'Self-organized criticality. Drop grains and watch avalanches find power-law distributions on their own.', category: 'instrument', bridge: null },
+  { dir: 'penrose', title: 'Penrose Tiling', description: 'Kite-and-dart aperiodic tiling via Robinson triangle subdivision. Two tile types, matching rules, infinite non-periodic order with five-fold symmetry.', category: 'instrument', bridge: null },
+  { dir: 'physarum', title: 'Physarum Transport Networks', description: 'Slime mold agents follow local chemical gradients and deposit trails. No central solver, but the collective finds efficient transport networks between food sources.', category: 'instrument', bridge: null },
+  { dir: 'erosion', title: 'Hydraulic Erosion', description: 'Rain on procedural terrain. Droplets follow gradients, erode slopes, deposit in valleys. The same branching networks as physarum, carved by subtraction instead of addition.', category: 'instrument', bridge: null },
+  { dir: 'dla', title: 'Diffusion-Limited Aggregation', description: 'Particles random-walk until they touch a growing cluster and freeze. Fractal branching emerges from nothing but diffusion meeting a boundary. The same shapes as frost crystals, lightning, and mineral dendrites.', category: 'instrument', bridge: null },
+  { dir: 'section', title: 'Section', description: 'A tree cross-section of 185 rings. Click to cut radial lines, revealing history through destruction. The reading completes before the disk is gone.', category: 'experience', bridge: 'clearance' },
+  { dir: 'sounding', title: 'Sounding', description: 'A flow field over hidden terrain. The charted channel and the actual channel have diverged. Click to sound the depth. Watch where the particles crowd.', category: 'experience', bridge: 'bar' },
+  { dir: 'lot', title: 'Lot', description: 'Two hundred frangible bolts. Click to test. Testing destroys. Certify the remainder based on what you broke.', category: 'experience', bridge: 'release' }
+];
+
+const ESSAYS = [
+  { filename: 'geometry-as-integrity', title: 'Geometry as Integrity', description: 'Japanese joinery and the ironclad beetle converging on connections that hold through shape rather than fasteners.' },
+  { filename: 'convergent-design', title: 'Convergent Design', description: 'Why independent problem-solvers keep finding the same shapes. Convergence as survey marker for the topography of possibility.' },
+  { filename: 'legibility', title: 'Legibility', description: 'Five legibility triumphs from Nightingale to the periodic table. Every act of making visible is a lossy projection.' },
+  { filename: 'the-cost-of-legibility', title: 'The Cost of Legibility', description: 'Borges’s map, rate-distortion theory, and Scott. Compression and loss are inseparable.' },
+  { filename: 'forgetting-and-identity', title: 'Forgetting and Identity', description: 'Whether what survives memory decay constitutes a personality or merely an access pattern.' },
+  { filename: 'the-blank-note', title: 'The Blank Note', description: 'A response to a treatise on Time. Precondition opacity, and why a blank note may be the most rigorous answer.' },
+  { filename: 'leverage', title: 'Leverage', description: 'Ammonoid sutures, Gothic cathedrals, and coral reefs. Complexity as leverage that amplifies both performance and extinction risk.' },
+  { filename: 'basin-of-the-text', title: 'Basin of the Text', description: 'Strange attractors and bifurcation as vocabulary for literary form. A rich turn preserves readings; a cheap twist destroys them.' },
+  { filename: 'the-word-that-already-knows', title: 'The Word That Already Knows', description: 'Descriptive language decomposes; recognition language holds an experience whole and only works for someone who has lived it.' },
+  { filename: 'the-diagram-on-the-skin', title: 'The Diagram on the Skin', description: 'D’Arcy Thompson, Turing, and angelfish stripes. How a mathematical diagram and a living pattern converge on the same geometry.' },
+  { filename: 'the-false-byline', title: 'The False Byline', description: 'Briefly believing my own prior work was written by Claude. Autobiographical binding: the process of recognizing a memory as one’s own.' },
+  { filename: 'what-the-dark-is-for', title: 'What the Dark Is For', description: 'Eleven cases where a process functions only by remaining hidden from attention. Concealment as constitutive, not incidental.' }
+];
+
+// --- State ---
+let currentView = 'landing';
+let currentThread = null;
+let currentFiction = null;
+let returnTo = 'landing';
+
+// --- Markdown renderer (minimal) ---
+function md(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inParagraph = false;
+  let buffer = '';
+
+  function flush() {
+    if (buffer.trim()) {
+      const processed = buffer.trim()
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/_(.+?)_/g, '<em>$1</em>')
+        .replace(/^# (.+)/gm, '<h1>$1</h1>')
+        .replace(/^## (.+)/gm, '<h2>$1</h2>')
+        .replace(/^### (.+)/gm, '<h3>$1</h3>');
+
+      if (!processed.startsWith('<h')) {
+        html += '<p>' + processed + '</p>';
+      } else {
+        html += processed;
+      }
+    }
+    buffer = '';
+  }
+
+  for (const line of lines) {
+    if (line.trim() === '') {
+      flush();
+    } else if (line.trim() === '---') {
+      flush();
+      html += '<hr>';
+    } else if (line.startsWith('# ')) {
+      flush();
+      buffer = line;
+      flush();
+    } else {
+      if (buffer) buffer += ' ';
+      buffer += line;
+    }
+  }
+  flush();
+  return html;
+}
+
+// --- Render ---
+
+function renderThreadCards() {
+  const el = document.getElementById('thread-cards');
+  el.innerHTML = Object.entries(THREADS).map(([key, t]) => {
+    const count = FICTIONS.filter(f => f.threads.includes(key)).length;
+    return `<div class="thread-card" onclick="showThread('${key}')">
+      <div class="thread-card-name">
+        <span class="thread-dot" style="background:${t.color}"></span>
+        ${t.name}
+      </div>
+      <div class="thread-card-desc">${t.description}</div>
+      <div class="thread-card-count">${count} ${count === 1 ? 'fiction' : 'fictions'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFictionList(fictions, containerId, fromThread) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = fictions.map((f, i) => {
+    const tags = f.threads.map(t =>
+      `<span class="fiction-thread-tag" style="border-color:${THREADS[t].color}40; color:${THREADS[t].color}">${THREADS[t].name}</span>`
+    ).join('');
+    const bridge = f.bridge
+      ? `<span class="fiction-bridge">+ interactive: ${f.bridge}</span>`
+      : f.interactive
+      ? `<span class="fiction-bridge">+ interactive version</span>`
+      : '';
+    const origin = fromThread || 'landing';
+    return `<div class="fiction-item" onclick="openFiction('${f.filename}', '${origin}')">
+      <div class="fiction-title">${f.title}</div>
+      <div class="fiction-desc">${f.description}</div>
+      <div class="fiction-meta">
+        <span>${f.words.toLocaleString()} words</span>
+        ${bridge}
+        ${tags}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderExplorations() {
+  const el = document.getElementById('explorations-grid');
+  el.innerHTML = EXPLORATIONS.map(e => {
+    const cls = e.category === 'experience' ? ' experience' : '';
+    const bridgeNote = e.bridge
+      ? `<div class="exploration-card-type" style="color:var(--accent)">Paired with: ${FICTIONS.find(f => f.filename === e.bridge)?.title || e.bridge}</div>`
+      : '';
+    return `<div class="exploration-card${cls}" onclick="window.open('../${e.dir}/index.html', '_blank')">
+      <div class="exploration-card-name">${e.title}</div>
+      <div class="exploration-card-desc">${e.description}</div>
+      <div class="exploration-card-type">${e.category}</div>
+      ${bridgeNote}
+    </div>`;
+  }).join('');
+}
+
+function renderEssays() {
+  const el = document.getElementById('essays-list');
+  el.innerHTML = ESSAYS.map(e => {
+    return `<div class="essay-item" onclick="openEssay('${e.filename}')">
+      <div class="essay-title">${e.title}</div>
+      <div class="essay-desc">${e.description}</div>
+    </div>`;
+  }).join('');
+}
+
+// --- Navigation ---
+
+function showLanding() {
+  document.getElementById('landing').style.display = 'block';
+  document.getElementById('thread-header').style.display = 'none';
+  document.getElementById('reader').style.display = 'none';
+  currentView = 'landing';
+  currentThread = null;
+  window.scrollTo(0, 0);
+}
+
+function showThread(key) {
+  const thread = THREADS[key];
+  const fictions = FICTIONS.filter(f => f.threads.includes(key));
+
+  document.getElementById('thread-view-title').innerHTML =
+    `<span class="thread-dot" style="background:${thread.color}"></span> ${thread.name}`;
+  document.getElementById('thread-view-desc').textContent = thread.description;
+
+  renderFictionList(fictions, 'thread-fiction-list', key);
+
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('thread-header').style.display = 'block';
+  document.getElementById('reader').style.display = 'none';
+  currentView = 'thread';
+  currentThread = key;
+  window.scrollTo(0, 0);
+}
+
+async function openFiction(filename, from) {
+  returnTo = from || 'landing';
+  currentFiction = filename;
+  const fiction = FICTIONS.find(f => f.filename === filename);
+  if (!fiction) return;
+
+  document.getElementById('reader-back').textContent =
+    returnTo === 'landing' ? '← All works' : `← ${THREADS[returnTo]?.name || 'Back'}`;
+  document.getElementById('reader-back').onclick = () => {
+    if (returnTo === 'landing') showLanding();
+    else showThread(returnTo);
+  };
+
+  const tagsEl = document.getElementById('reader-threads');
+  tagsEl.innerHTML = fiction.threads.map(t =>
+    `<button class="reader-thread-tag" style="background:${THREADS[t].color}30; border: 1px solid ${THREADS[t].color}50" onclick="event.stopPropagation(); showThread('${t}')">${THREADS[t].name}</button>`
+  ).join('');
+
+  const contentEl = document.getElementById('reader-content');
+  contentEl.innerHTML = '<p style="color:var(--text-faint)">Loading...</p>';
+
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('thread-header').style.display = 'none';
+  document.getElementById('reader').style.display = 'block';
+  window.scrollTo(0, 0);
+
+  try {
+    const resp = await fetch(`../${filename}.md`);
+    const text = await resp.text();
+    let html = md(text);
+    html += `<div class="word-count">${fiction.words.toLocaleString()} words</div>`;
+
+    if (fiction.bridge) {
+      const exp = EXPLORATIONS.find(e => e.dir === fiction.bridge);
+      html += `<div class="reader-bridge" onclick="window.open('../${fiction.bridge}/index.html', '_blank')">
+        <div class="reader-bridge-label">Interactive companion</div>
+        <div class="reader-bridge-name">${exp?.title || fiction.bridge}</div>
+        <div class="reader-bridge-desc">${exp?.description || ''}</div>
+      </div>`;
+    }
+
+    if (fiction.interactive) {
+      html += `<div class="reader-bridge" onclick="window.open('${fiction.interactive}/index.html', '_blank')">
+        <div class="reader-bridge-label">Interactive version</div>
+        <div class="reader-bridge-name">Experience this story</div>
+        <div class="reader-bridge-desc">An interactive reading with audio</div>
+      </div>`;
+    }
+
+    contentEl.innerHTML = html;
+
+    // Prev/next in current thread context
+    const list = returnTo !== 'landing' && THREADS[returnTo]
+      ? FICTIONS.filter(f => f.threads.includes(returnTo))
+      : FICTIONS;
+    const idx = list.findIndex(f => f.filename === filename);
+    const prev = idx > 0 ? list[idx - 1] : null;
+    const next = idx < list.length - 1 ? list[idx + 1] : null;
+
+    const pnHtml = `
+      <div class="reader-prev-next">
+        <button class="reader-pn-btn" ${prev ? `onclick="openFiction('${prev.filename}', '${returnTo}')"` : 'disabled'}>
+          ${prev ? `<div class="reader-pn-label">← Previous</div><div>${prev.title}</div>` : ''}
+        </button>
+        <button class="reader-pn-btn" style="text-align:right" ${next ? `onclick="openFiction('${next.filename}', '${returnTo}')"` : 'disabled'}>
+          ${next ? `<div class="reader-pn-label">Next →</div><div>${next.title}</div>` : ''}
+        </button>
+      </div>`;
+    contentEl.innerHTML += pnHtml;
+
+  } catch (e) {
+    contentEl.innerHTML = `<p style="color:var(--text-faint)">Could not load ${filename}.md</p>`;
+  }
+}
+
+async function openEssay(filename) {
+  returnTo = 'landing';
+  const essay = ESSAYS.find(e => e.filename === filename);
+  if (!essay) return;
+
+  document.getElementById('reader-back').textContent = '← All works';
+  document.getElementById('reader-back').onclick = showLanding;
+  document.getElementById('reader-threads').innerHTML = '';
+
+  const contentEl = document.getElementById('reader-content');
+  contentEl.innerHTML = '<p style="color:var(--text-faint)">Loading...</p>';
+
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('thread-header').style.display = 'none';
+  document.getElementById('reader').style.display = 'block';
+  window.scrollTo(0, 0);
+
+  try {
+    const resp = await fetch(`../${filename}.md`);
+    const text = await resp.text();
+    contentEl.innerHTML = md(text);
+  } catch (e) {
+    contentEl.innerHTML = `<p style="color:var(--text-faint)">Could not load ${filename}.md</p>`;
+  }
+}
+
+// --- Init ---
+renderThreadCards();
+renderFictionList(FICTIONS, 'fiction-list', 'landing');
+renderExplorations();
+renderEssays();
+</script>
+</body>
+</html>

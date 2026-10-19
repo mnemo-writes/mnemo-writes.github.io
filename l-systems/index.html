@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>L-Systems</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    color: #ccc;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    color: #888;
+  }
+  canvas {
+    border: 1px solid #333;
+  }
+  .controls {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 800px;
+  }
+  .control {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .control label {
+    font-size: 11px;
+    color: #666;
+    letter-spacing: 1px;
+  }
+  .control input[type="range"] {
+    width: 120px;
+    accent-color: #5a8a6a;
+  }
+  .control .value {
+    font-size: 11px;
+    color: #999;
+  }
+  .buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    background: #222;
+    color: #aaa;
+    border: 1px solid #444;
+    padding: 6px 16px;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+  button:hover { background: #333; color: #ddd; }
+  button.active { border-color: #5a8a6a; color: #5a8a6a; }
+  .rules-panel {
+    margin-top: 16px;
+    max-width: 600px;
+    width: 100%;
+  }
+  .rules-panel label {
+    font-size: 11px;
+    color: #666;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .rule-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+  }
+  .rule-row span {
+    font-size: 12px;
+    color: #888;
+    min-width: 20px;
+  }
+  .rule-row input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .rule-row input:focus {
+    outline: none;
+    border-color: #5a8a6a;
+  }
+  .axiom-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .axiom-row label {
+    font-size: 11px;
+    color: #666;
+    letter-spacing: 1px;
+    min-width: 50px;
+    margin-bottom: 0;
+  }
+  .axiom-row input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .axiom-row input:focus {
+    outline: none;
+    border-color: #5a8a6a;
+  }
+  .info {
+    font-size: 11px;
+    color: #555;
+    margin-top: 12px;
+    text-align: center;
+    max-width: 600px;
+    line-height: 1.6;
+  }
+  .string-display {
+    font-size: 10px;
+    color: #444;
+    margin-top: 8px;
+    max-width: 600px;
+    word-break: break-all;
+    text-align: center;
+    max-height: 40px;
+    overflow: hidden;
+  }
+  .stochastic-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .stochastic-toggle label {
+    font-size: 11px;
+    color: #666;
+    letter-spacing: 1px;
+  }
+  .stochastic-toggle input {
+    accent-color: #5a8a6a;
+  }
+</style>
+</head>
+<body>
+
+<h1>L-Systems</h1>
+<canvas id="canvas" width="800" height="600"></canvas>
+
+<div class="controls">
+  <div class="control">
+    <label>ANGLE</label>
+    <input type="range" id="angle" min="1" max="180" value="25" step="0.1">
+    <span class="value" id="angle-val">25</span>
+  </div>
+  <div class="control">
+    <label>DEPTH</label>
+    <input type="range" id="depth" min="1" max="8" value="4">
+    <span class="value" id="depth-val">4</span>
+  </div>
+  <div class="control">
+    <label>LENGTH</label>
+    <input type="range" id="length" min="1" max="30" value="8">
+    <span class="value" id="length-val">8</span>
+  </div>
+  <div class="control">
+    <label>WIDTH</label>
+    <input type="range" id="width" min="1" max="10" value="1">
+    <span class="value" id="width-val">1</span>
+  </div>
+</div>
+
+<div class="buttons" id="presets"></div>
+
+<div class="buttons">
+  <button id="btn-draw">DRAW</button>
+  <button id="btn-animate">ANIMATE</button>
+  <button id="btn-stop">STOP</button>
+</div>
+
+<div class="stochastic-toggle">
+  <input type="checkbox" id="stochastic">
+  <label for="stochastic">STOCHASTIC (vary lengths +-30%)</label>
+</div>
+
+<div class="rules-panel">
+  <div class="axiom-row">
+    <label>AXIOM</label>
+    <input type="text" id="axiom" value="X" spellcheck="false">
+  </div>
+  <label>RULES</label>
+  <div id="rules-container"></div>
+  <button id="btn-add-rule" style="margin-top: 4px;">+ RULE</button>
+</div>
+
+<div class="string-display" id="string-display"></div>
+<div class="info">
+  F: draw forward. f: move forward. +/-: turn right/left by angle.
+  [/]: push/pop state. Other letters: rewrite only.
+  Sweep the angle to watch the same grammar reorganize.
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const PRESETS = {
+  'Fern': {
+    axiom: 'X',
+    rules: { X: 'F+[[X]-X]-F[-FX]+X', F: 'FF' },
+    angle: 25, depth: 5, length: 4, width: 1,
+    startAngle: -90, startY: 1.0,
+    color: 'plant'
+  },
+  'Bush': {
+    axiom: 'F',
+    rules: { F: 'FF+[+F-F-F]-[-F+F+F]' },
+    angle: 22, depth: 4, length: 6, width: 1,
+    startAngle: -90, startY: 1.0,
+    color: 'plant'
+  },
+  'Tree': {
+    axiom: 'X',
+    rules: { X: 'F[-X][+X]FX', F: 'FF' },
+    angle: 30, depth: 6, length: 2, width: 1,
+    startAngle: -90, startY: 1.0,
+    color: 'plant'
+  },
+  'Weed': {
+    axiom: 'F',
+    rules: { F: 'F[+F]F[-F]F' },
+    angle: 25.7, depth: 4, length: 8, width: 1,
+    startAngle: -90, startY: 1.0,
+    color: 'plant'
+  },
+  'Koch': {
+    axiom: 'F',
+    rules: { F: 'F+F-F-F+F' },
+    angle: 90, depth: 4, length: 4, width: 1,
+    startAngle: 0, startY: 0.7,
+    color: 'frost'
+  },
+  'Sierpinski': {
+    axiom: 'A',
+    rules: { A: 'B-A-B', B: 'A+B+A' },
+    angle: 60, depth: 6, length: 3, width: 1,
+    startAngle: 0, startY: 0.85,
+    color: 'frost',
+    drawChars: 'AB'
+  },
+  'Dragon': {
+    axiom: 'FX',
+    rules: { X: 'X+YF+', Y: '-FX-Y' },
+    angle: 90, depth: 10, length: 5, width: 1,
+    startAngle: 0, startY: 0.5,
+    color: 'ember'
+  },
+  'Penrose': {
+    axiom: '[X]++[X]++[X]++[X]++[X]',
+    rules: {
+      W: 'YF++ZF----XF[-YF----WF]++',
+      X: '+YF--ZF[---WF--XF]+',
+      Y: '-WF++XF[+++YF++ZF]-',
+      Z: '--YF++++WF[+ZF++++XF]--XF',
+      F: ''
+    },
+    angle: 36, depth: 4, length: 18, width: 1,
+    startAngle: 0, startY: 0.35,
+    color: 'frost'
+  },
+  'Hilbert': {
+    axiom: 'A',
+    rules: { A: '+BF-AFA-FB+', B: '-AF+BFB+FA-' },
+    angle: 90, depth: 5, length: 7, width: 1,
+    startAngle: 0, startY: 0.95,
+    color: 'ember'
+  }
+};
+
+const COLORS = {
+  plant: (t, depth) => {
+    const g = Math.floor(80 + 120 * (1 - depth));
+    const r = Math.floor(40 + 60 * depth);
+    const b = Math.floor(30 + 20 * (1 - depth));
+    return `rgb(${r},${g},${b})`;
+  },
+  frost: (t, depth) => {
+    const r = Math.floor(100 + 100 * t);
+    const g = Math.floor(160 + 80 * (1 - t));
+    const b = Math.floor(200 + 55 * (1 - depth));
+    return `rgb(${r},${g},${b})`;
+  },
+  ember: (t, depth) => {
+    const r = Math.floor(180 + 75 * t);
+    const g = Math.floor(80 + 100 * t);
+    const b = Math.floor(40 + 40 * (1 - t));
+    return `rgb(${r},${g},${b})`;
+  }
+};
+
+let currentPreset = 'Fern';
+let animating = false;
+let animFrame = null;
+let segments = [];
+let segIdx = 0;
+
+function getAngle() { return parseFloat(document.getElementById('angle').value); }
+function getDepth() { return parseInt(document.getElementById('depth').value); }
+function getLength() { return parseFloat(document.getElementById('length').value); }
+function getWidth() { return parseFloat(document.getElementById('width').value); }
+function isStochastic() { return document.getElementById('stochastic').checked; }
+
+function getRules() {
+  const rules = {};
+  const rows = document.querySelectorAll('.rule-row');
+  rows.forEach(row => {
+    const sym = row.querySelector('.rule-sym').value.trim();
+    const prod = row.querySelector('.rule-prod').value.trim();
+    if (sym) rules[sym] = prod;
+  });
+  return rules;
+}
+
+function getAxiom() {
+  return document.getElementById('axiom').value.trim() || 'F';
+}
+
+function setRulesUI(rules) {
+  const container = document.getElementById('rules-container');
+  container.innerHTML = '';
+  for (const [sym, prod] of Object.entries(rules)) {
+    addRuleRow(sym, prod);
+  }
+}
+
+function addRuleRow(sym = '', prod = '') {
+  const container = document.getElementById('rules-container');
+  const row = document.createElement('div');
+  row.className = 'rule-row';
+  const symInput = document.createElement('input');
+  symInput.className = 'rule-sym';
+  symInput.value = sym;
+  symInput.style.width = '30px';
+  symInput.style.textAlign = 'center';
+  symInput.maxLength = 1;
+  symInput.spellcheck = false;
+  const arrow = document.createElement('span');
+  arrow.textContent = '->';
+  const prodInput = document.createElement('input');
+  prodInput.className = 'rule-prod';
+  prodInput.value = prod;
+  prodInput.spellcheck = false;
+  const removeBtn = document.createElement('button');
+  removeBtn.textContent = 'x';
+  removeBtn.style.padding = '2px 8px';
+  removeBtn.onclick = () => row.remove();
+  row.appendChild(symInput);
+  row.appendChild(arrow);
+  row.appendChild(prodInput);
+  row.appendChild(removeBtn);
+  container.appendChild(row);
+}
+
+function generate(axiom, rules, depth) {
+  let current = axiom;
+  for (let i = 0; i < depth; i++) {
+    let next = '';
+    for (const ch of current) {
+      next += rules[ch] !== undefined ? rules[ch] : ch;
+    }
+    current = next;
+    if (current.length > 2000000) break;
+  }
+  return current;
+}
+
+function interpret(str, angle, stepLen, startAngle, startX, startY, stochastic, drawChars) {
+  const drawSet = new Set(drawChars || 'F');
+  const segs = [];
+  let x = startX;
+  let y = startY;
+  let dir = startAngle * Math.PI / 180;
+  const angleRad = angle * Math.PI / 180;
+  const stack = [];
+  let depthLevel = 0;
+  let maxDepth = 0;
+
+  const MAX_SEGS = 500000;
+  for (let i = 0; i < str.length; i++) {
+    if (segs.length >= MAX_SEGS) break;
+    const ch = str[i];
+    if (drawSet.has(ch)) {
+      let len = stepLen;
+      if (stochastic) len *= 0.7 + Math.random() * 0.6;
+      const nx = x + len * Math.cos(dir);
+      const ny = y + len * Math.sin(dir);
+      segs.push({ x1: x, y1: y, x2: nx, y2: ny, depth: depthLevel });
+      x = nx;
+      y = ny;
+    } else if (ch === 'f') {
+      let len = stepLen;
+      if (stochastic) len *= 0.7 + Math.random() * 0.6;
+      x += len * Math.cos(dir);
+      y += len * Math.sin(dir);
+    } else if (ch === '+') {
+      dir += angleRad;
+    } else if (ch === '-') {
+      dir -= angleRad;
+    } else if (ch === '[') {
+      stack.push({ x, y, dir, depthLevel });
+      depthLevel++;
+      if (depthLevel > maxDepth) maxDepth = depthLevel;
+    } else if (ch === ']') {
+      const state = stack.pop();
+      if (state) {
+        x = state.x;
+        y = state.y;
+        dir = state.dir;
+        depthLevel = state.depthLevel;
+      }
+    }
+  }
+
+  if (maxDepth === 0) maxDepth = 1;
+  for (const s of segs) {
+    s.depthNorm = s.depth / maxDepth;
+  }
+  return segs;
+}
+
+function fitToCanvas(segs) {
+  if (segs.length === 0) return segs;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const s of segs) {
+    minX = Math.min(minX, s.x1, s.x2);
+    maxX = Math.max(maxX, s.x1, s.x2);
+    minY = Math.min(minY, s.y1, s.y2);
+    maxY = Math.max(maxY, s.y1, s.y2);
+  }
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+  const margin = 40;
+  const availW = W - 2 * margin;
+  const availH = H - 2 * margin;
+  const scale = Math.min(availW / rangeX, availH / rangeY);
+  const offX = margin + (availW - rangeX * scale) / 2 - minX * scale;
+  const offY = margin + (availH - rangeY * scale) / 2 - minY * scale;
+
+  return segs.map(s => ({
+    x1: s.x1 * scale + offX,
+    y1: s.y1 * scale + offY,
+    x2: s.x2 * scale + offX,
+    y2: s.y2 * scale + offY,
+    depth: s.depth,
+    depthNorm: s.depthNorm
+  }));
+}
+
+function drawSegments(segs, count, colorFn, lineWidth) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round';
+  const n = Math.min(count, segs.length);
+  for (let i = 0; i < n; i++) {
+    const s = segs[i];
+    const t = n > 1 ? i / (n - 1) : 0;
+    ctx.strokeStyle = colorFn(t, s.depthNorm);
+    ctx.lineWidth = lineWidth * (1 - 0.3 * s.depthNorm);
+    ctx.beginPath();
+    ctx.moveTo(s.x1, s.y1);
+    ctx.lineTo(s.x2, s.y2);
+    ctx.stroke();
+  }
+}
+
+function getColorFn() {
+  const preset = PRESETS[currentPreset];
+  if (preset && COLORS[preset.color]) return COLORS[preset.color];
+  return COLORS.plant;
+}
+
+function buildAndDraw() {
+  stopAnimation();
+  const axiom = getAxiom();
+  const rules = getRules();
+  const depth = getDepth();
+  const angle = getAngle();
+  const stepLen = getLength();
+  const lineWidth = getWidth();
+  const stochastic = isStochastic();
+
+  const preset = PRESETS[currentPreset];
+  const startAngle = preset ? preset.startAngle : -90;
+  const drawChars = preset ? preset.drawChars : undefined;
+
+  const str = generate(axiom, rules, depth);
+
+  const display = document.getElementById('string-display');
+  if (str.length <= 200) {
+    display.textContent = str;
+  } else {
+    display.textContent = str.substring(0, 200) + '... (' + str.length.toLocaleString() + ' symbols)';
+  }
+
+  const rawSegs = interpret(str, angle, stepLen, startAngle, 0, 0, stochastic, drawChars);
+  segments = fitToCanvas(rawSegs);
+  drawSegments(segments, segments.length, getColorFn(), lineWidth);
+}
+
+function animateDraw() {
+  stopAnimation();
+  const axiom = getAxiom();
+  const rules = getRules();
+  const depth = getDepth();
+  const angle = getAngle();
+  const stepLen = getLength();
+  const lineWidth = getWidth();
+  const stochastic = isStochastic();
+
+  const preset = PRESETS[currentPreset];
+  const startAngle = preset ? preset.startAngle : -90;
+  const drawChars = preset ? preset.drawChars : undefined;
+
+  const str = generate(axiom, rules, depth);
+
+  const display = document.getElementById('string-display');
+  if (str.length <= 200) {
+    display.textContent = str;
+  } else {
+    display.textContent = str.substring(0, 200) + '... (' + str.length.toLocaleString() + ' symbols)';
+  }
+
+  const rawSegs = interpret(str, angle, stepLen, startAngle, 0, 0, stochastic, drawChars);
+  segments = fitToCanvas(rawSegs);
+  segIdx = 0;
+  animating = true;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round';
+  const colorFn = getColorFn();
+  const batchSize = Math.max(1, Math.floor(segments.length / 300));
+  const totalSegs = segments.length;
+
+  function step() {
+    if (!animating) return;
+    const prevIdx = segIdx;
+    segIdx = Math.min(segIdx + batchSize, totalSegs);
+    for (let i = prevIdx; i < segIdx; i++) {
+      const s = segments[i];
+      const t = totalSegs > 1 ? i / (totalSegs - 1) : 0;
+      ctx.strokeStyle = colorFn(t, s.depthNorm);
+      ctx.lineWidth = lineWidth * (1 - 0.3 * s.depthNorm);
+      ctx.beginPath();
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      ctx.stroke();
+    }
+    if (segIdx < totalSegs) {
+      animFrame = requestAnimationFrame(step);
+    } else {
+      animating = false;
+    }
+  }
+  step();
+}
+
+function stopAnimation() {
+  animating = false;
+  if (animFrame) {
+    cancelAnimationFrame(animFrame);
+    animFrame = null;
+  }
+}
+
+function loadPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  currentPreset = name;
+  document.getElementById('axiom').value = p.axiom;
+  document.getElementById('angle').value = p.angle;
+  document.getElementById('angle-val').textContent = p.angle;
+  document.getElementById('depth').value = p.depth;
+  document.getElementById('depth-val').textContent = p.depth;
+  document.getElementById('length').value = p.length;
+  document.getElementById('length-val').textContent = p.length;
+  document.getElementById('width').value = p.width;
+  document.getElementById('width-val').textContent = p.width;
+  setRulesUI(p.rules);
+
+  document.querySelectorAll('#presets button').forEach(b => {
+    b.classList.toggle('active', b.textContent === name);
+  });
+
+  buildAndDraw();
+}
+
+// preset buttons
+const presetsDiv = document.getElementById('presets');
+for (const name of Object.keys(PRESETS)) {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.onclick = () => loadPreset(name);
+  presetsDiv.appendChild(btn);
+}
+
+// slider updates
+for (const id of ['angle', 'depth', 'length', 'width']) {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(id + '-val');
+  el.addEventListener('input', () => {
+    valEl.textContent = el.value;
+    buildAndDraw();
+  });
+}
+
+document.getElementById('btn-draw').onclick = buildAndDraw;
+document.getElementById('btn-animate').onclick = animateDraw;
+document.getElementById('btn-stop').onclick = stopAnimation;
+document.getElementById('btn-add-rule').onclick = () => addRuleRow();
+document.getElementById('stochastic').onchange = buildAndDraw;
+
+let editTimer = null;
+function debouncedDraw() {
+  clearTimeout(editTimer);
+  editTimer = setTimeout(buildAndDraw, 400);
+}
+document.getElementById('rules-container').addEventListener('input', debouncedDraw);
+document.getElementById('axiom').addEventListener('input', debouncedDraw);
+
+loadPreset('Fern');
+</script>
+</body>
+</html>

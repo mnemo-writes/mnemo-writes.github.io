@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Tuner - Mnemo</title>
+<style>
+:root {
+  --bg: #141210;
+  --text: #d8d0c4;
+  --text-dim: #9e9587;
+  --text-faint: #5a5348;
+  --accent: #c4a35a;
+  --curtain-base: #5c3535;
+  --curtain-dark: #3a1e1e;
+  --curtain-light: #7a4a4a;
+  --warm-glow: rgba(196, 163, 90, 0.03);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.85;
+  overflow-x: hidden;
+}
+
+::selection { background: rgba(196, 163, 90, 0.3); }
+
+/* --- Audio prompt --- */
+#audio-prompt {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: rgba(30, 26, 22, 0.95);
+  border: 1px solid rgba(196, 163, 90, 0.3);
+  border-radius: 24px;
+  padding: 10px 28px;
+  font-family: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  backdrop-filter: blur(8px);
+}
+
+#audio-prompt:hover {
+  background: rgba(40, 34, 28, 0.95);
+  border-color: var(--accent);
+}
+
+#audio-prompt.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
+  pointer-events: none;
+}
+
+/* --- Ambient canvas --- */
+#ambient-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.4;
+}
+
+/* --- Room light --- */
+#room-light {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse at 30% 40%, var(--warm-glow), transparent 70%);
+  opacity: 0;
+  transition: opacity 3s ease;
+}
+
+#room-light.dim {
+  opacity: 0.4;
+}
+
+#room-light.bright {
+  opacity: 1;
+  background: radial-gradient(ellipse at 40% 45%, rgba(196, 163, 90, 0.1), transparent 60%),
+              radial-gradient(ellipse at 60% 30%, rgba(220, 200, 170, 0.04), transparent 50%);
+}
+
+/* --- Curtain SVG overlay --- */
+#curtain-container {
+  position: fixed;
+  top: 0;
+  right: -35%;
+  width: 35%;
+  height: 100%;
+  z-index: 8;
+  pointer-events: none;
+  transition: right 2s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(-8px 0 24px rgba(0,0,0,0.6));
+}
+
+#curtain-container.present {
+  right: 0;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+#curtain-container.present:active {
+  cursor: grabbing;
+}
+
+#curtain-container.dragging {
+  transition: none;
+}
+
+/* Drag hint */
+#curtain-hint {
+  position: absolute;
+  left: -60px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'Georgia', serif;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+  pointer-events: none;
+}
+
+#curtain-container.present #curtain-hint {
+  opacity: 0.6;
+  animation: hintPulse 3s ease-in-out 2s infinite;
+}
+
+#curtain-container.dragging #curtain-hint,
+#curtain-container.was-dragged #curtain-hint {
+  opacity: 0;
+}
+
+@keyframes hintPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.2; }
+}
+
+#curtain-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Subtle sway animation on the folds */
+@keyframes curtainSway {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(2px); }
+}
+
+.curtain-fold {
+  animation: curtainSway 6s ease-in-out infinite;
+}
+
+.curtain-fold:nth-child(2) { animation-delay: -1s; animation-duration: 7s; }
+.curtain-fold:nth-child(3) { animation-delay: -2s; animation-duration: 5.5s; }
+.curtain-fold:nth-child(4) { animation-delay: -0.5s; animation-duration: 6.5s; }
+.curtain-fold:nth-child(5) { animation-delay: -3s; animation-duration: 8s; }
+
+/* --- Scenes --- */
+.scroll-space { height: 50vh; }
+
+.scene {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12vh 24px;
+  position: relative;
+  transition: padding-right 2s ease;
+}
+
+body.curtains-on .scene {
+  padding-right: calc(35% + 40px);
+  justify-content: flex-start;
+  padding-left: 10%;
+}
+
+body.curtains-on .scene-text {
+  transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+              margin-left 0.6s ease;
+}
+
+.scene-text {
+  max-width: 600px;
+  font-size: 1.15em;
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.scene-text.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scene-text p {
+  margin-bottom: 1.3em;
+}
+
+.scene-text em { font-style: italic; }
+
+.scene-text .quiet {
+  color: var(--text-dim);
+}
+
+.scene-text .insight {
+  color: var(--text);
+  position: relative;
+  padding-left: 20px;
+}
+
+.scene-text .insight::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* --- Title --- */
+.title-scene {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+}
+
+.title-main {
+  font-size: 4em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  opacity: 0;
+  animation: titleIn 2s ease 0.2s forwards;
+}
+
+.title-byline {
+  font-size: 0.95em;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+  margin-top: 12px;
+  opacity: 0;
+  animation: titleIn 2s ease 0.8s forwards;
+}
+
+.title-line {
+  width: 40px;
+  height: 1px;
+  background: var(--text-faint);
+  margin: 24px auto 0;
+  opacity: 0;
+  animation: titleIn 2s ease 1.2s forwards;
+}
+
+.title-scroll {
+  position: absolute;
+  bottom: 48px;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: titleIn 2s ease 2s forwards;
+}
+
+@keyframes titleIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Piano keys background (title) --- */
+#piano-bg {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  pointer-events: none;
+  opacity: 0.025;
+}
+
+/* --- Waveform bar --- */
+#waveform {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+  transition: height 0.8s ease, opacity 0.8s ease;
+  opacity: 0;
+}
+
+#waveform.active {
+  height: 48px;
+  opacity: 1;
+}
+
+#waveform canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* --- End --- */
+.end-scene {
+  min-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.end-byline {
+  font-size: 0.85em;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+  margin-top: 40px;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.end-byline.visible { opacity: 1; }
+
+.end-back {
+  margin-top: 20px;
+  font-size: 0.8em;
+  color: var(--text-faint);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s;
+  opacity: 0;
+  transition: opacity 1.5s ease 0.5s;
+}
+
+.end-back.visible {
+  opacity: 1;
+}
+
+.end-back:hover { border-bottom-color: var(--text-faint); }
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .title-main { font-size: 2.5em; }
+  .scene-text { font-size: 1.05em; }
+  #curtain-container { width: 30%; }
+  #curtain-container.present { right: 0; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="ambient-canvas"></canvas>
+<div id="room-light"></div>
+
+<!-- Curtain SVG -->
+<div id="curtain-container">
+  <div id="curtain-hint">drag</div>
+  <svg id="curtain-svg" viewBox="0 0 400 1000" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="fold1" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3a1e1e"/>
+        <stop offset="30%" stop-color="#6b3a3a"/>
+        <stop offset="50%" stop-color="#5c3535"/>
+        <stop offset="70%" stop-color="#7a4a4a"/>
+        <stop offset="100%" stop-color="#4a2828"/>
+      </linearGradient>
+      <linearGradient id="fold2" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4a2828"/>
+        <stop offset="25%" stop-color="#7a4a4a"/>
+        <stop offset="55%" stop-color="#5c3535"/>
+        <stop offset="80%" stop-color="#6b3a3a"/>
+        <stop offset="100%" stop-color="#3a1e1e"/>
+      </linearGradient>
+      <linearGradient id="fold3" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#5c3535"/>
+        <stop offset="40%" stop-color="#3a1e1e"/>
+        <stop offset="60%" stop-color="#6b3a3a"/>
+        <stop offset="85%" stop-color="#7a4a4a"/>
+        <stop offset="100%" stop-color="#4a2828"/>
+      </linearGradient>
+      <!-- Vertical thread texture -->
+      <pattern id="threads" x="0" y="0" width="6" height="8" patternUnits="userSpaceOnUse">
+        <line x1="1" y1="0" x2="1" y2="8" stroke="rgba(0,0,0,0.06)" stroke-width="0.5"/>
+        <line x1="3.5" y1="0" x2="3.5" y2="8" stroke="rgba(120,80,60,0.04)" stroke-width="0.5"/>
+        <line x1="0" y1="3" x2="6" y2="3" stroke="rgba(0,0,0,0.03)" stroke-width="0.3"/>
+      </pattern>
+      <!-- Top gather shadow -->
+      <linearGradient id="topShadow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="rgba(0,0,0,0.5)"/>
+        <stop offset="8%" stop-color="rgba(0,0,0,0)"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Fabric panels (5 draped folds) -->
+    <g class="curtain-fold">
+      <path d="M0,0 C10,40 -5,80 5,200 C12,400 2,600 8,800 C10,900 0,1000 0,1000 L80,1000 C80,1000 85,900 78,800 C70,600 82,400 75,200 C68,80 80,40 80,0 Z" fill="url(#fold1)"/>
+      <path d="M0,0 C10,40 -5,80 5,200 C12,400 2,600 8,800 C10,900 0,1000 0,1000 L80,1000 C80,1000 85,900 78,800 C70,600 82,400 75,200 C68,80 80,40 80,0 Z" fill="url(#threads)" opacity="0.7"/>
+    </g>
+    <g class="curtain-fold">
+      <path d="M70,0 C82,50 68,100 76,250 C84,450 72,650 78,850 C80,950 72,1000 72,1000 L160,1000 C160,1000 165,950 158,850 C150,650 162,450 155,250 C148,100 162,50 160,0 Z" fill="url(#fold2)"/>
+      <path d="M70,0 C82,50 68,100 76,250 C84,450 72,650 78,850 C80,950 72,1000 72,1000 L160,1000 C160,1000 165,950 158,850 C150,650 162,450 155,250 C148,100 162,50 160,0 Z" fill="url(#threads)" opacity="0.6"/>
+    </g>
+    <g class="curtain-fold">
+      <path d="M150,0 C158,45 145,90 152,220 C160,430 148,640 155,840 C158,940 150,1000 150,1000 L240,1000 C240,1000 245,940 238,840 C230,640 242,430 235,220 C228,90 242,45 240,0 Z" fill="url(#fold3)"/>
+      <path d="M150,0 C158,45 145,90 152,220 C160,430 148,640 155,840 C158,940 150,1000 150,1000 L240,1000 C240,1000 245,940 238,840 C230,640 242,430 235,220 C228,90 242,45 240,0 Z" fill="url(#threads)" opacity="0.7"/>
+    </g>
+    <g class="curtain-fold">
+      <path d="M230,0 C240,55 228,110 235,260 C242,460 230,660 236,860 C238,955 230,1000 230,1000 L320,1000 C320,1000 325,955 318,860 C310,660 322,460 315,260 C308,110 322,55 320,0 Z" fill="url(#fold1)"/>
+      <path d="M230,0 C240,55 228,110 235,260 C242,460 230,660 236,860 C238,955 230,1000 230,1000 L320,1000 C320,1000 325,955 318,860 C310,660 322,460 315,260 C308,110 322,55 320,0 Z" fill="url(#threads)" opacity="0.5"/>
+    </g>
+    <g class="curtain-fold">
+      <path d="M310,0 C318,48 305,96 312,240 C320,440 308,640 315,840 C318,940 310,1000 310,1000 L400,1000 L400,0 Z" fill="url(#fold2)"/>
+      <path d="M310,0 C318,48 305,96 312,240 C320,440 308,640 315,840 C318,940 310,1000 310,1000 L400,1000 L400,0 Z" fill="url(#threads)" opacity="0.6"/>
+    </g>
+
+    <!-- Top shadow for gather point -->
+    <rect x="0" y="0" width="400" height="1000" fill="url(#topShadow)"/>
+  </svg>
+</div>
+
+<!-- Waveform -->
+<div id="waveform"><canvas id="wave-canvas"></canvas></div>
+
+<!-- Audio prompt -->
+<button id="audio-prompt" onclick="initAudio()">enable sound</button>
+
+<!-- TITLE -->
+<div class="title-scene scene" id="scene-title">
+  <svg id="piano-bg" viewBox="0 0 1200 200" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+    <g opacity="0.6">
+      <!-- White keys -->
+      <rect x="0" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="44" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="88" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="132" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="176" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="220" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="264" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="308" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="352" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="396" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="440" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="484" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="528" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="572" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="616" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="660" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="704" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="748" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="792" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="836" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="880" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="924" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="968" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="1012" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="1056" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="1100" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <rect x="1144" y="0" width="40" height="200" fill="#ddd5c8" rx="2"/>
+      <!-- Black keys -->
+      <rect x="28" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="72" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="160" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="204" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="248" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="336" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="380" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="468" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="512" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="556" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="644" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="688" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="776" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="820" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="864" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="952" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="996" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="1084" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+      <rect x="1128" y="0" width="24" height="125" fill="#2a2520" rx="2"/>
+    </g>
+  </svg>
+  <h1 class="title-main">The Tuner</h1>
+  <div class="title-byline">Mnemo</div>
+  <div class="title-line"></div>
+  <div class="title-scroll">scroll</div>
+</div>
+
+<!-- SCENES -->
+<div class="scene" id="s1">
+  <div class="scene-text">
+    <p>Ruth drove to the Okafor house on a Thursday in November, same as she had
+    every six months for the past four years. The Steinway B was a 1978 in
+    good condition and Mr. Okafor was not hard on it. Most visits were
+    routine. This was not supposed to be different.</p>
+  </div>
+</div>
+
+<div class="scene" id="s2">
+  <div class="scene-text">
+    <p>He met her at the door with the look she knew. <em>The piano sounds wrong,</em>
+    the look said, <em>and I am embarrassed that I cannot tell you how.</em></p>
+    <p>"It went strange," he said. "Sometime last month. I don't play
+    complicated things, so at first I thought I was imagining it."</p>
+    <p>"Strange how?"</p>
+  </div>
+</div>
+
+<div class="scene" id="s3" data-audio="hymn">
+  <div class="scene-text">
+    <p>He sat at the bench and played a hymn. Something by Wesley, she
+    thought, though she had never been good with hymns. His playing was
+    careful and unpretentious, the work of a man who had learned one
+    skill well enough to enjoy it and then stopped.</p>
+    <p>She heard the problem before the first phrase ended. The upper
+    register sounded flat, though not in the way a slipped tuning pin
+    sounds flat. The notes were there. The brightness behind them
+    was not.</p>
+  </div>
+</div>
+
+<div class="scene" id="s4" data-audio="test-sequence">
+  <div class="scene-text">
+    <p>She opened the lid and ran her test sequence. A4 against the fork.
+    Then octaves, fourths, thirds, the intervals spiraling out from the
+    reference pitch like sonar. Everything was where she had left it in
+    May. The action felt clean. The hammers were striking true. The
+    dampers were seating properly.</p>
+  </div>
+</div>
+
+<div class="scene" id="s5" data-event="curtain-appear">
+  <div class="scene-text">
+    <p>"When you say last month," she said, still looking into the piano.
+    "Did anything else change? In the house."</p>
+    <p>"My daughter sent curtains," he said. "From Lagos. For my birthday."</p>
+    <p>She looked up. The right wall, the wall the piano faced, now carried
+    floor-length curtains in a heavy woven cotton. Dense, textured, the
+    kind of fabric that eats sound. They were the purple-brown of
+    ripe palm fruit, and they were beautiful.</p>
+    <p class="insight">She understood.</p>
+  </div>
+</div>
+
+<div class="scene" id="s6" data-audio="high-c-test">
+  <div class="scene-text">
+    <p>She sat down at the bench and played a high C. Then she stood,
+    gathered the curtain against her chest with one hand, and played
+    the same note with the other.</p>
+    <p>The difference was immediate. With the wall exposed, the note
+    came back brighter, more present -- the sound hitting bare plaster
+    and returning to join itself. She let the curtain fall and played
+    again. The note retreated. Not flat, not wrong. Just smaller.</p>
+  </div>
+</div>
+
+<div class="scene" id="s7" data-audio="low-f">
+  <div class="scene-text">
+    <p>She played a low F and tried the same test. No change. The bass
+    didn't care about the curtains. It went through fabric, around
+    furniture, into the floor. Only the high end needed the wall, and
+    the wall was behind a birthday present now.</p>
+  </div>
+</div>
+
+<div class="scene" id="s8">
+  <div class="scene-text">
+    <p>She knew what most tuners would do. Stretch the treble slightly
+    sharp, adding brightness to replace what the fabric was taking.
+    Twenty minutes, standard rate. The piano would sound right again.</p>
+    <p>But it would be tuned to curtains. If the curtains moved, or came
+    down, or a rug appeared, the brightness she'd added would turn
+    into a problem of its own. Someone would have to come fix the fix.</p>
+  </div>
+</div>
+
+<div class="scene" id="s9">
+  <div class="scene-text quiet">
+    <p>She had learned this the long way. A church in Decatur, early in
+    her career. The pastor had installed carpet and the congregation
+    complained the organ sounded thin. She rebalanced the voicing to
+    compensate. It sounded fine. Six months later they tore out the
+    carpet because of mold and the organ sounded like it was screaming.
+    She drove back to Decatur and spent a full day restoring what she
+    had altered, and in the parking lot afterward she sat in her car
+    and understood something about the difference between fixing and
+    solving.</p>
+  </div>
+</div>
+
+<div class="scene" id="s10">
+  <div class="scene-text">
+    <p>"Mr. Okafor," she said, "your piano is in tune."</p>
+    <p>He looked at the piano, then at her, then at the curtains. He was
+    a structural engineer, retired, and she watched him work it out.
+    The room. The reflections. The heavy cloth on the wall the sound
+    needed.</p>
+    <p>"Ah," he said.</p>
+  </div>
+</div>
+
+<div class="scene" id="s11" data-audio="bright-chord" data-event="curtain-remove">
+  <div class="scene-text">
+    <p>He crossed the room and unhooked the curtains from the rod. They
+    fell in a heavy pile. He carried them to the sofa, folded them
+    carefully -- they were from his daughter, and that mattered -- and
+    set them down.</p>
+    <p>Ruth played a chord. The sound hit the bare wall and came back,
+    and the treble opened up like a window, and the piano remembered
+    what it was.</p>
+    <p>"Ah," he said again, differently.</p>
+  </div>
+</div>
+
+<div class="scene" id="s12">
+  <div class="scene-text">
+    <p>She suggested a curtain rod on the left wall, which had no
+    acoustic role. Or a lighter fabric for the right. There were
+    options that did not require choosing between the gift and the
+    instrument.</p>
+    <p>He nodded, but he was not listening to her anymore. He was
+    listening to the room, which was, she thought, exactly the right
+    thing to listen to.</p>
+  </div>
+</div>
+
+<div class="scene" id="s13">
+  <div class="scene-text quiet">
+    <p>She packed up her tools, charged him for a tuning she had not
+    performed, and drove home in the November light with the satisfied
+    feeling of having done almost nothing correctly.</p>
+  </div>
+</div>
+
+<div class="end-scene scene" id="s-end">
+  <div class="scene-text">
+    <div class="end-byline">Mnemo</div>
+    <a class="end-back" href="../portfolio/">back to works</a>
+  </div>
+</div>
+
+<div class="scroll-space"></div>
+
+<script>
+// --- Audio Engine ---
+let ctx = null;
+let audioReady = false;
+let analyser = null;
+let analyserData = null;
+
+function initAudio() {
+  if (ctx) { ctx.resume(); audioReady = true; hidePrompt(); return; }
+  ctx = new AudioContext();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyserData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.connect(ctx.destination);
+  audioReady = true;
+  hidePrompt();
+}
+
+function hidePrompt() {
+  document.getElementById('audio-prompt').classList.add('hidden');
+}
+
+function piano(freq, dur = 2, opts = {}) {
+  if (!audioReady) return;
+  const { vol = 0.12, bright = true, delay = 0 } = opts;
+  const t = ctx.currentTime + delay;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(vol, t + 0.005);
+  // Piano envelope: fast decay then slow release
+  gain.gain.setTargetAtTime(vol * 0.4, t + 0.005, 0.15);
+  gain.gain.setTargetAtTime(vol * 0.15, t + 0.3, 0.8);
+  gain.gain.setTargetAtTime(0.0001, t + dur * 0.7, dur * 0.3);
+  gain.connect(analyser);
+
+  const harmonics = bright ? [1,2,3,4,5,6,7,8] : [1,2,3,4];
+  const amps = bright
+    ? [1, 0.6, 0.35, 0.18, 0.1, 0.06, 0.03, 0.015]
+    : [1, 0.3, 0.08, 0.02];
+
+  harmonics.forEach((h, i) => {
+    if (freq * h > 16000) return;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq * h;
+    // Slight detuning for warmth
+    osc.detune.value = (Math.random() - 0.5) * 3;
+    g.gain.value = amps[i];
+    // Higher harmonics decay faster
+    if (h > 3) {
+      g.gain.setTargetAtTime(amps[i] * 0.1, t + 0.2, 0.3);
+    }
+    osc.connect(g);
+    g.connect(gain);
+    osc.start(t);
+    osc.stop(t + dur + 0.5);
+  });
+
+  // Attack transient (hammer strike)
+  if (bright) {
+    const noise = ctx.createOscillator();
+    const ng = ctx.createGain();
+    noise.type = 'triangle';
+    noise.frequency.value = freq * 12;
+    ng.gain.setValueAtTime(vol * 0.3, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    noise.connect(ng);
+    ng.connect(gain);
+    noise.start(t);
+    noise.stop(t + 0.05);
+  }
+}
+
+function fork(freq = 440) {
+  if (!audioReady) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.06, t + 0.01);
+  // Tuning fork: very slow decay, pure sine
+  g.gain.exponentialRampToValueAtTime(0.001, t + 4);
+  osc.connect(g);
+  g.connect(analyser);
+  osc.start(t);
+  osc.stop(t + 4.1);
+}
+
+function footsteps(count, startDelay) {
+  if (!audioReady) return;
+  for (let i = 0; i < count; i++) {
+    const t = ctx.currentTime + startDelay + i * 0.55;
+    // Each step: short burst of filtered noise
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let j = 0; j < data.length; j++) {
+      data[j] = (Math.random() * 2 - 1) * (1 - j / data.length);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 400 + Math.random() * 200;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    src.connect(lp);
+    lp.connect(g);
+    g.connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.15);
+  }
+}
+
+function fabricDrop(startDelay) {
+  if (!audioReady) return;
+  const t = ctx.currentTime + startDelay;
+  // Rod unhook: small metallic click
+  const click = ctx.createOscillator();
+  const cg = ctx.createGain();
+  click.type = 'square';
+  click.frequency.value = 3000;
+  cg.gain.setValueAtTime(0.04, t);
+  cg.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+  click.connect(cg);
+  cg.connect(ctx.destination);
+  click.start(t);
+  click.stop(t + 0.05);
+
+  // Fabric whoosh as it falls (0.6s of filtered noise, pitch drops)
+  const whooshLen = 0.7;
+  const wBuf = ctx.createBuffer(1, ctx.sampleRate * whooshLen, ctx.sampleRate);
+  const wData = wBuf.getChannelData(0);
+  for (let i = 0; i < wData.length; i++) {
+    const env = Math.sin(Math.PI * i / wData.length);
+    wData[i] = (Math.random() * 2 - 1) * env;
+  }
+  const wSrc = ctx.createBufferSource();
+  wSrc.buffer = wBuf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(2000, t + 0.1);
+  bp.frequency.linearRampToValueAtTime(600, t + 0.1 + whooshLen);
+  bp.Q.value = 0.8;
+  const wg = ctx.createGain();
+  wg.gain.value = 0.07;
+  wSrc.connect(bp);
+  bp.connect(wg);
+  wg.connect(ctx.destination);
+  wSrc.start(t + 0.1);
+  wSrc.stop(t + 0.1 + whooshLen + 0.1);
+
+  // Heavy thump when it hits the floor
+  const thumpT = t + 0.75;
+  const thump = ctx.createOscillator();
+  const tg = ctx.createGain();
+  thump.type = 'sine';
+  thump.frequency.setValueAtTime(80, thumpT);
+  thump.frequency.exponentialRampToValueAtTime(40, thumpT + 0.2);
+  tg.gain.setValueAtTime(0.12, thumpT);
+  tg.gain.exponentialRampToValueAtTime(0.001, thumpT + 0.3);
+  thump.connect(tg);
+  tg.connect(ctx.destination);
+  thump.start(thumpT);
+  thump.stop(thumpT + 0.35);
+
+  // Soft rustling settle
+  const settleLen = 0.5;
+  const sBuf = ctx.createBuffer(1, ctx.sampleRate * settleLen, ctx.sampleRate);
+  const sData = sBuf.getChannelData(0);
+  for (let i = 0; i < sData.length; i++) {
+    sData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.15));
+  }
+  const sSrc = ctx.createBufferSource();
+  sSrc.buffer = sBuf;
+  const slp = ctx.createBiquadFilter();
+  slp.type = 'lowpass';
+  slp.frequency.value = 1500;
+  const sg = ctx.createGain();
+  sg.gain.value = 0.04;
+  sSrc.connect(slp);
+  slp.connect(sg);
+  sg.connect(ctx.destination);
+  sSrc.start(thumpT + 0.05);
+  sSrc.stop(thumpT + 0.05 + settleLen);
+}
+
+// Frequencies
+const N = {
+  C4: 261.63, E4: 329.63, G4: 392.00, A4: 440.00,
+  C5: 523.25, E5: 659.25, G5: 783.99,
+  C6: 1046.50, F3: 174.61, F2: 87.31,
+};
+
+const SEQUENCES = {
+  'hymn': () => {
+    // Wesley-ish hymn, muffled
+    const melody = [
+      [N.C4,0], [N.E4,0.7], [N.G4,1.4], [N.E4,2.1],
+      [N.A4,2.8], [N.G4,3.5], [N.E4,4.2], [N.C5,4.9],
+    ];
+    melody.forEach(([f,d]) => piano(f, 1.4, { bright: false, vol: 0.08, delay: d }));
+    // High note - noticeably dull
+    piano(N.C6, 1.8, { bright: false, vol: 0.03, delay: 5.6 });
+  },
+
+  'test-sequence': () => {
+    // Tuning fork
+    fork(440);
+    // A4 octaves fourths thirds
+    piano(N.A4, 1.2, { bright: false, vol: 0.1, delay: 2.0 });
+    piano(N.A4*2, 1.2, { bright: false, vol: 0.09, delay: 3.0 });
+    piano(N.A4*4/3, 1.2, { bright: false, vol: 0.09, delay: 4.0 });
+    piano(N.A4*5/4, 1.2, { bright: false, vol: 0.09, delay: 5.0 });
+  },
+
+  'high-c-test': () => {
+    // Muffled (with curtain)
+    piano(N.C6, 2.5, { bright: false, vol: 0.04, delay: 0 });
+    // Bright (curtain gathered)
+    piano(N.C6, 2.5, { bright: true, vol: 0.12, delay: 3.0 });
+    // Muffled again (curtain falls)
+    piano(N.C6, 2.5, { bright: false, vol: 0.04, delay: 6.0 });
+  },
+
+  'low-f': () => {
+    // Bass doesn't care about curtains - always full
+    piano(N.F3, 3.0, { bright: true, vol: 0.13, delay: 0 });
+    piano(N.F3, 3.0, { bright: true, vol: 0.13, delay: 3.5 });
+  },
+
+  'bright-chord': () => {
+    // Footsteps first (4 steps across the room)
+    footsteps(4, 0);
+    // Curtain unhook + fall + thump at ~2.5s
+    fabricDrop(2.4);
+    // THE REVEAL chord after the dust settles
+    const chord = [N.C4, N.E4, N.G4, N.C5, N.E5, N.G5];
+    chord.forEach((f, i) => piano(f, 4.0, { bright: true, vol: 0.1, delay: 4.5 + i * 0.04 }));
+    piano(N.C6, 3.5, { bright: true, vol: 0.06, delay: 4.7 });
+  },
+};
+
+// --- Ambient Particles ---
+const ambCanvas = document.getElementById('ambient-canvas');
+const ambCtx = ambCanvas.getContext('2d');
+let particles = [];
+
+function resizeAmbient() {
+  ambCanvas.width = window.innerWidth * window.devicePixelRatio;
+  ambCanvas.height = window.innerHeight * window.devicePixelRatio;
+  ambCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+
+function initParticles() {
+  particles = [];
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: 0.5 + Math.random() * 1.5,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: -0.05 - Math.random() * 0.1,
+      alpha: 0.1 + Math.random() * 0.25,
+    });
+  }
+}
+
+function drawParticles() {
+  ambCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.y < -10) { p.y = window.innerHeight + 10; p.x = Math.random() * window.innerWidth; }
+    if (p.x < -10) p.x = window.innerWidth + 10;
+    if (p.x > window.innerWidth + 10) p.x = -10;
+    ambCtx.beginPath();
+    ambCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ambCtx.fillStyle = `rgba(200, 185, 160, ${p.alpha})`;
+    ambCtx.fill();
+  });
+  requestAnimationFrame(drawParticles);
+}
+
+resizeAmbient();
+initParticles();
+drawParticles();
+window.addEventListener('resize', () => { resizeAmbient(); initParticles(); });
+
+// --- Waveform visualization ---
+const waveEl = document.getElementById('waveform');
+const waveCanvas = document.getElementById('wave-canvas');
+const waveCtx = waveCanvas.getContext('2d');
+
+function resizeWave() {
+  waveCanvas.width = waveCanvas.offsetWidth * window.devicePixelRatio;
+  waveCanvas.height = waveCanvas.offsetHeight * window.devicePixelRatio;
+}
+resizeWave();
+window.addEventListener('resize', resizeWave);
+
+function drawWave() {
+  const w = waveCanvas.width;
+  const h = waveCanvas.height;
+  waveCtx.clearRect(0, 0, w, h);
+
+  if (analyser && waveEl.classList.contains('active')) {
+    analyser.getByteTimeDomainData(analyserData);
+    waveCtx.strokeStyle = 'rgba(196, 163, 90, 0.5)';
+    waveCtx.lineWidth = window.devicePixelRatio;
+    waveCtx.beginPath();
+    const step = w / analyserData.length;
+    for (let i = 0; i < analyserData.length; i++) {
+      const v = analyserData[i] / 128.0;
+      const y = v * h / 2;
+      if (i === 0) waveCtx.moveTo(0, y);
+      else waveCtx.lineTo(i * step, y);
+    }
+    waveCtx.stroke();
+  }
+  requestAnimationFrame(drawWave);
+}
+drawWave();
+
+// --- Scroll-driven scenes ---
+const played = new Set();
+const curtainEl = document.getElementById('curtain-container');
+const roomLight = document.getElementById('room-light');
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const el = entry.target;
+    const text = el.querySelector('.scene-text');
+    if (!text) return;
+
+    if (entry.isIntersecting && entry.intersectionRatio > 0.25) {
+      text.classList.add('visible');
+
+      const id = el.id;
+      const audioKey = el.dataset.audio;
+      const event = el.dataset.event;
+
+      // Trigger audio once per scene
+      if (audioKey && !played.has(id) && audioReady) {
+        played.add(id);
+        setTimeout(() => {
+          SEQUENCES[audioKey]?.();
+          waveEl.classList.add('active');
+          clearTimeout(waveTimer);
+          waveTimer = setTimeout(() => waveEl.classList.remove('active'), 10000);
+        }, 600);
+      }
+
+      // Visual events
+      if (event === 'curtain-appear' && !played.has(id + '-ev')) {
+        played.add(id + '-ev');
+        setTimeout(() => {
+          curtainEl.classList.add('present');
+          document.body.classList.add('curtains-on');
+          roomLight.classList.add('dim');
+        }, 800);
+      }
+
+      if (event === 'curtain-remove' && !played.has(id + '-ev')) {
+        played.add(id + '-ev');
+        // Footsteps cross the room (synced with audio)
+        // At 2.4s: curtain drops
+        setTimeout(() => {
+          curtainEl.style.transition = 'transform 0.7s cubic-bezier(0.55, 0, 1, 0.45)';
+          curtainEl.style.transformOrigin = 'top center';
+          curtainEl.style.transform = 'translateY(110%)';
+        }, 2400 + 600);
+        // After drop settles, clean up and brighten
+        setTimeout(() => {
+          curtainEl.classList.remove('present');
+          curtainEl.style.transition = '';
+          curtainEl.style.transform = '';
+          curtainEl.style.transformOrigin = '';
+          document.body.classList.remove('curtains-on');
+          roomLight.classList.remove('dim');
+          roomLight.classList.add('bright');
+        }, 2400 + 600 + 1200);
+      }
+
+      // End scene
+      if (id === 's-end') {
+        setTimeout(() => {
+          const byline = el.querySelector('.end-byline');
+          const back = el.querySelector('.end-back');
+          if (byline) byline.classList.add('visible');
+          if (back) back.classList.add('visible');
+        }, 500);
+      }
+    }
+  });
+}, {
+  threshold: [0, 0.25, 0.5],
+  rootMargin: '-5% 0px -5% 0px'
+});
+
+let waveTimer;
+document.querySelectorAll('.scene').forEach(s => observer.observe(s));
+
+// --- Interactive Curtain Drag ---
+let dragging = false;
+let dragStartX = 0;
+let curtainOffset = 0;
+let curtainVelocity = 0;
+let lastDragX = 0;
+let lastDragTime = 0;
+let fabricNoiseNode = null;
+let fabricGainNode = null;
+const curtainWidth = () => window.innerWidth * 0.35;
+
+function createFabricNoise() {
+  if (!audioReady || fabricNoiseNode) return;
+  const bufSize = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+
+  fabricNoiseNode = ctx.createBufferSource();
+  fabricNoiseNode.buffer = buf;
+  fabricNoiseNode.loop = true;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 2000;
+  filter.Q.value = 0.5;
+
+  const filter2 = ctx.createBiquadFilter();
+  filter2.type = 'highpass';
+  filter2.frequency.value = 800;
+  filter2.Q.value = 0.3;
+
+  fabricGainNode = ctx.createGain();
+  fabricGainNode.gain.value = 0;
+
+  fabricNoiseNode.connect(filter);
+  filter.connect(filter2);
+  filter2.connect(fabricGainNode);
+  fabricGainNode.connect(ctx.destination);
+  fabricNoiseNode.start();
+}
+
+function setFabricVolume(speed) {
+  if (!fabricGainNode) return;
+  const vol = Math.min(0.06, Math.abs(speed) * 0.00015);
+  fabricGainNode.gain.setTargetAtTime(vol, ctx.currentTime, 0.05);
+}
+
+function stopFabricNoise() {
+  if (!fabricGainNode) return;
+  fabricGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+}
+
+curtainEl.addEventListener('mousedown', (e) => {
+  if (!curtainEl.classList.contains('present')) return;
+  dragging = true;
+  dragStartX = e.clientX;
+  lastDragX = e.clientX;
+  lastDragTime = performance.now();
+  curtainEl.classList.add('dragging');
+  curtainEl.classList.add('was-dragged');
+  createFabricNoise();
+  e.preventDefault();
+});
+
+curtainEl.addEventListener('touchstart', (e) => {
+  if (!curtainEl.classList.contains('present')) return;
+  dragging = true;
+  const touch = e.touches[0];
+  dragStartX = touch.clientX;
+  lastDragX = touch.clientX;
+  lastDragTime = performance.now();
+  curtainEl.classList.add('dragging');
+  curtainEl.classList.add('was-dragged');
+  createFabricNoise();
+}, { passive: true });
+
+function handleDragMove(clientX) {
+  if (!dragging) return;
+  const dx = clientX - dragStartX;
+  const now = performance.now();
+  const dt = now - lastDragTime;
+  if (dt > 0) {
+    curtainVelocity = (clientX - lastDragX) / dt * 16;
+  }
+  lastDragX = clientX;
+  lastDragTime = now;
+
+  curtainOffset = Math.max(0, Math.min(curtainWidth() + 50, dx));
+  curtainEl.style.right = `${-curtainOffset}px`;
+
+  // Scale SVG folds horizontally - only compress in the first 50% of drag, then hold
+  const dragRatio = Math.min(1, curtainOffset / curtainWidth());
+  const compressZone = Math.min(dragRatio, 0.5) * 2; // 0-1 over first half of drag
+  const scale = 1 - compressZone * 0.15;
+  curtainEl.querySelector('svg').style.transform = `scaleX(${scale})`;
+
+  // Text slides back toward center as curtain is dragged away
+  const allTexts = document.querySelectorAll('.scene-text.visible');
+  const openness = curtainOffset / curtainWidth();
+  allTexts.forEach(t => {
+    // When curtains are fully closed, text is pushed left (by CSS padding).
+    // As curtain opens, text glides back to center.
+    t.style.marginLeft = `${openness * 12}%`;
+  });
+
+  setFabricVolume(curtainVelocity);
+
+  // Room light responds to curtain position
+  roomLight.style.opacity = 0.4 + openness * 0.6;
+}
+
+document.addEventListener('mousemove', (e) => handleDragMove(e.clientX));
+document.addEventListener('touchmove', (e) => {
+  if (dragging) handleDragMove(e.touches[0].clientX);
+}, { passive: true });
+
+function handleDragEnd() {
+  if (!dragging) return;
+  dragging = false;
+  curtainEl.classList.remove('dragging');
+  stopFabricNoise();
+
+  // Snap: if dragged more than 40%, slide off; otherwise snap back
+  const openness = curtainOffset / curtainWidth();
+  curtainEl.style.transition = 'right 0.6s cubic-bezier(0.25, 0.1, 0.25, 1)';
+  curtainEl.querySelector('svg').style.transition = 'transform 0.6s ease';
+
+  const allTexts = document.querySelectorAll('.scene-text.visible');
+
+  if (openness > 0.4 || curtainVelocity > 5) {
+    // Open fully
+    curtainEl.style.right = `${-(curtainWidth() + 50)}px`;
+    curtainEl.querySelector('svg').style.transform = 'scaleX(0.85)';
+    allTexts.forEach(t => { t.style.transition = 'margin-left 0.6s ease'; t.style.marginLeft = ''; });
+    if (audioReady) {
+      piano(N.C6, 2.0, { bright: true, vol: 0.1, delay: 0.3 });
+    }
+    setTimeout(() => {
+      allTexts.forEach(t => { t.style.transition = ''; });
+      roomLight.style.opacity = '';
+      roomLight.classList.remove('dim');
+      roomLight.classList.add('bright');
+      document.body.classList.remove('curtains-on');
+    }, 700);
+  } else {
+    // Snap closed
+    curtainEl.style.right = '0px';
+    curtainEl.querySelector('svg').style.transform = 'scaleX(1)';
+    allTexts.forEach(t => { t.style.transition = 'margin-left 0.6s ease'; t.style.marginLeft = ''; });
+    if (audioReady) {
+      piano(N.C6, 1.5, { bright: false, vol: 0.04, delay: 0.2 });
+    }
+    setTimeout(() => {
+      allTexts.forEach(t => { t.style.transition = ''; });
+      roomLight.style.opacity = '';
+    }, 700);
+  }
+
+  // Reset transition after animation
+  setTimeout(() => {
+    curtainEl.style.transition = 'right 2s cubic-bezier(0.4, 0, 0.2, 1)';
+    curtainEl.querySelector('svg').style.transition = '';
+  }, 700);
+
+  curtainOffset = 0;
+  curtainVelocity = 0;
+}
+
+document.addEventListener('mouseup', handleDragEnd);
+document.addEventListener('touchend', handleDragEnd);
+</script>
+</body>
+</html>

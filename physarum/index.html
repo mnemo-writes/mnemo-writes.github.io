@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Physarum Transport Networks</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0a0f;
+  color: #c8c8d0;
+  font-family: system-ui, -apple-system, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+#display {
+  display: block;
+  cursor: crosshair;
+  image-rendering: auto;
+}
+.controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+  background: rgba(10, 10, 15, 0.85);
+  padding: 10px 18px;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(200, 200, 208, 0.1);
+  z-index: 10;
+}
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.controls input[type="range"] {
+  width: 80px;
+  accent-color: #7eb89a;
+}
+.controls button {
+  background: rgba(126, 184, 154, 0.15);
+  border: 1px solid rgba(126, 184, 154, 0.3);
+  color: #c8c8d0;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.controls button:hover {
+  background: rgba(126, 184, 154, 0.25);
+}
+.info {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(200, 200, 208, 0.5);
+  z-index: 10;
+}
+.info kbd {
+  background: rgba(200, 200, 208, 0.1);
+  border: 1px solid rgba(200, 200, 208, 0.15);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+<div class="info">
+  Click to place food. <kbd>Space</kbd> pause. <kbd>C</kbd> clear trails. <kbd>R</kbd> reset.
+</div>
+<canvas id="display"></canvas>
+<div class="controls">
+  <label>Agents: <input type="range" id="agentCount" min="10000" max="200000" step="5000" value="60000"><span id="agentCountVal">60k</span></label>
+  <label>Sensor angle: <input type="range" id="sensorAngle" min="10" max="80" step="1" value="30"><span id="sensorAngleVal">30</span></label>
+  <label>Sensor dist: <input type="range" id="sensorDist" min="3" max="30" step="1" value="9"><span id="sensorDistVal">9</span></label>
+  <label>Decay: <input type="range" id="decayRate" min="0.900" max="0.995" step="0.005" value="0.960"><span id="decayRateVal">0.960</span></label>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<script>
+const display = document.getElementById('display');
+const dCtx = display.getContext('2d');
+
+const SCALE = 2;
+let SW, SH; // simulation dimensions (half screen)
+let DW, DH; // display dimensions (full screen)
+let trailA, trailB;
+let agents = [];
+let foodSources = [];
+let paused = false;
+let animId;
+
+const params = {
+  agentCount: 60000,
+  sensorAngle: 30,
+  sensorDist: 9,
+  turnAngle: 30,
+  speed: 1.0,
+  depositAmount: 5,
+  decayRate: 0.960,
+  foodRadius: 25,
+  foodStrength: 0.8,
+};
+
+function resize() {
+  DW = window.innerWidth;
+  DH = window.innerHeight;
+  display.width = DW;
+  display.height = DH;
+  SW = Math.floor(DW / SCALE);
+  SH = Math.floor(DH / SCALE);
+}
+
+function init() {
+  resize();
+  trailA = new Float32Array(SW * SH);
+  trailB = new Float32Array(SW * SH);
+  agents = [];
+  foodSources = [];
+
+  // three food sources in a triangle
+  const cx = SW / 2;
+  const cy = SH / 2;
+  const spread = Math.min(SW, SH) * 0.28;
+  for (let i = 0; i < 3; i++) {
+    const angle = (i * Math.PI * 2) / 3 - Math.PI / 2;
+    foodSources.push({
+      x: cx + Math.cos(angle) * spread,
+      y: cy + Math.sin(angle) * spread,
+    });
+  }
+
+  // spawn agents in a central cluster
+  for (let i = 0; i < params.agentCount; i++) {
+    const r = Math.random() * Math.min(SW, SH) * 0.3;
+    const a = Math.random() * Math.PI * 2;
+    agents.push({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+      angle: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+function sampleTrail(x, y) {
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+  if (ix < 0 || ix >= SW || iy < 0 || iy >= SH) return 0;
+  return trailA[iy * SW + ix];
+}
+
+function sense(ax, ay, angle, offset) {
+  const dir = angle + offset;
+  const sx = ax + Math.cos(dir) * params.sensorDist;
+  const sy = ay + Math.sin(dir) * params.sensorDist;
+
+  let val = sampleTrail(sx, sy);
+
+  for (let i = 0; i < foodSources.length; i++) {
+    const f = foodSources[i];
+    const dx = sx - f.x;
+    const dy = sy - f.y;
+    const d2 = dx * dx + dy * dy;
+    const r2 = params.foodRadius * params.foodRadius;
+    if (d2 < r2) {
+      val += params.foodStrength * (1 - Math.sqrt(d2) / params.foodRadius);
+    }
+  }
+
+  return val;
+}
+
+function step() {
+  const sRad = params.sensorAngle * Math.PI / 180;
+  const tRad = params.turnAngle * Math.PI / 180;
+  const spd = params.speed;
+  const deposit = params.depositAmount;
+  const n = agents.length;
+
+  for (let i = 0; i < n; i++) {
+    const a = agents[i];
+
+    const fwd = sense(a.x, a.y, a.angle, 0);
+    const lft = sense(a.x, a.y, a.angle, -sRad);
+    const rgt = sense(a.x, a.y, a.angle, sRad);
+
+    if (fwd >= lft && fwd >= rgt) {
+      // straight
+    } else if (lft > rgt) {
+      a.angle -= tRad;
+    } else if (rgt > lft) {
+      a.angle += tRad;
+    } else {
+      a.angle += (Math.random() - 0.5) * tRad * 2;
+    }
+
+    a.x += Math.cos(a.angle) * spd;
+    a.y += Math.sin(a.angle) * spd;
+
+    // wrap at edges
+    if (a.x < 0) a.x += SW;
+    else if (a.x >= SW) a.x -= SW;
+    if (a.y < 0) a.y += SH;
+    else if (a.y >= SH) a.y -= SH;
+
+    const idx = Math.round(a.y) * SW + Math.round(a.x);
+    if (idx >= 0 && idx < trailA.length) {
+      trailA[idx] = Math.min(trailA[idx] + deposit, 255);
+    }
+  }
+
+  // diffuse and decay
+  const decay = params.decayRate;
+  const w = SW;
+  const h = SH;
+
+  for (let y = 0; y < h; y++) {
+    const ym = y === 0 ? h - 1 : y - 1;
+    const yp = y === h - 1 ? 0 : y + 1;
+
+    for (let x = 0; x < w; x++) {
+      const xm = x === 0 ? w - 1 : x - 1;
+      const xp = x === w - 1 ? 0 : x + 1;
+
+      const sum =
+        trailA[ym * w + xm] + trailA[ym * w + x] + trailA[ym * w + xp] +
+        trailA[y  * w + xm] + trailA[y  * w + x] + trailA[y  * w + xp] +
+        trailA[yp * w + xm] + trailA[yp * w + x] + trailA[yp * w + xp];
+
+      trailB[y * w + x] = (sum / 9) * decay;
+    }
+  }
+
+  const tmp = trailA;
+  trailA = trailB;
+  trailB = tmp;
+}
+
+let simCanvas, sCtx, imageData;
+
+function initRenderBuffers() {
+  simCanvas = document.createElement('canvas');
+  simCanvas.width = SW;
+  simCanvas.height = SH;
+  sCtx = simCanvas.getContext('2d');
+  imageData = sCtx.createImageData(SW, SH);
+}
+
+function renderFast() {
+  if (!simCanvas || simCanvas.width !== SW) initRenderBuffers();
+  const data = imageData.data;
+
+  for (let i = 0; i < trailA.length; i++) {
+    const v = trailA[i];
+    const p = i * 4;
+    const t = Math.min(v / 30, 1);
+    const t2 = t * t;
+    const t3 = t2 * t;
+
+    data[p]     = (8 + t * 60 + t2 * 120 + t3 * 67) | 0;
+    data[p + 1] = (10 + t * 90 + t2 * 100 + t3 * 55) | 0;
+    data[p + 2] = (18 + t * 50 + t2 * 30 + t3 * 20) | 0;
+    data[p + 3] = 255;
+  }
+
+  for (const f of foodSources) {
+    const r = params.foodRadius;
+    const r2 = r * r;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2) continue;
+        const px = (f.x + dx) | 0;
+        const py = (f.y + dy) | 0;
+        if (px < 0 || px >= SW || py < 0 || py >= SH) continue;
+        const fade = 1 - Math.sqrt(d2) / r;
+        const p = (py * SW + px) * 4;
+        const glow = fade * fade * 40;
+        data[p]     = Math.min(255, data[p] + (glow * 0.4) | 0);
+        data[p + 1] = Math.min(255, data[p + 1] + glow | 0);
+        data[p + 2] = Math.min(255, data[p + 2] + (glow * 0.3) | 0);
+      }
+    }
+  }
+
+  sCtx.putImageData(imageData, 0, 0);
+  dCtx.imageSmoothingEnabled = true;
+  dCtx.imageSmoothingQuality = 'high';
+  dCtx.drawImage(simCanvas, 0, 0, DW, DH);
+}
+
+function loop() {
+  if (!paused) {
+    step();
+    renderFast();
+  }
+  animId = requestAnimationFrame(loop);
+}
+
+function setupControls() {
+  const sliders = {
+    agentCount: { key: 'agentCount', fmt: v => Math.round(v / 1000) + 'k' },
+    sensorAngle: { key: 'sensorAngle', fmt: v => v },
+    sensorDist: { key: 'sensorDist', fmt: v => v },
+    decayRate: { key: 'decayRate', fmt: v => v },
+  };
+
+  for (const [id, cfg] of Object.entries(sliders)) {
+    const el = document.getElementById(id);
+    const valEl = document.getElementById(id + 'Val');
+    el.addEventListener('input', () => {
+      const v = parseFloat(el.value);
+      params[cfg.key] = v;
+      valEl.textContent = cfg.fmt(v);
+    });
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    cancelAnimationFrame(animId);
+    init();
+    initRenderBuffers();
+    loop();
+  });
+}
+
+display.addEventListener('click', (e) => {
+  foodSources.push({
+    x: e.clientX / SCALE,
+    y: e.clientY / SCALE,
+  });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    paused = !paused;
+  } else if (e.key === 'c' || e.key === 'C') {
+    trailA.fill(0);
+  } else if (e.key === 'r' || e.key === 'R') {
+    cancelAnimationFrame(animId);
+    init();
+    initRenderBuffers();
+    loop();
+  }
+});
+
+window.addEventListener('resize', () => {
+  resize();
+  const oldA = trailA;
+  const oldW = simCanvas ? simCanvas.width : SW;
+  const oldH = simCanvas ? simCanvas.height : SH;
+  trailA = new Float32Array(SW * SH);
+  trailB = new Float32Array(SW * SH);
+  const copyW = Math.min(oldW, SW);
+  const copyH = Math.min(oldH, SH);
+  for (let y = 0; y < copyH; y++) {
+    for (let x = 0; x < copyW; x++) {
+      trailA[y * SW + x] = oldA[y * oldW + x];
+    }
+  }
+  initRenderBuffers();
+});
+
+setupControls();
+init();
+initRenderBuffers();
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Percolation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #faf9f6;
+  color: #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+}
+h1 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.3rem;
+}
+.note {
+  font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 1.5rem;
+  max-width: 560px;
+  text-align: center;
+  line-height: 1.5;
+}
+canvas {
+  border: 1px solid #ddd;
+  background: #fff;
+  margin-bottom: 1.2rem;
+  cursor: crosshair;
+}
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+  width: 100%;
+  max-width: 520px;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+}
+.slider-row label {
+  font-size: 0.8rem;
+  color: #777;
+  min-width: 80px;
+  text-align: right;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #2a2a2a;
+}
+.slider-row .value {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: #2a2a2a;
+  min-width: 48px;
+}
+.button-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+button {
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+button:hover { border-color: #888; color: #222; }
+button.active { background: #2a2a2a; color: #fff; border-color: #2a2a2a; }
+.stats {
+  font-size: 0.78rem;
+  color: #666;
+  line-height: 1.6;
+  text-align: center;
+  min-height: 4em;
+}
+.stats .spanning { color: #c45a3c; font-weight: 500; }
+.stats .no-spanning { color: #999; }
+.pc-mark {
+  font-size: 0.7rem;
+  color: #c45a3c;
+  margin-top: -0.2rem;
+}
+</style>
+</head>
+<body>
+
+<h1>Percolation</h1>
+<div class="note">
+  Site percolation on a square lattice. Each cell is filled with probability p.
+  At the critical threshold p<sub>c</sub> ≈ 0.5927, a connected cluster first
+  spans the grid. Below: isolated islands. Above: a continent. The parameter
+  is continuous; the outcome is binary; at the threshold, you must run
+  the process to know.
+</div>
+
+<canvas id="grid"></canvas>
+
+<div class="controls">
+  <div class="slider-row">
+    <label>probability</label>
+    <input type="range" id="prob" min="0" max="1000" value="593">
+    <span class="value" id="prob-val">0.593</span>
+  </div>
+  <div class="pc-mark">p<sub>c</sub> ≈ 0.5927 (site, square lattice)</div>
+
+  <div class="slider-row">
+    <label>grid size</label>
+    <input type="range" id="size" min="20" max="300" value="120" step="10">
+    <span class="value" id="size-val">120</span>
+  </div>
+
+  <div class="button-row">
+    <button id="btn-sample">new sample</button>
+    <button id="btn-sweep">sweep p</button>
+    <button id="btn-sub">p<sub>c</sub> - 0.05</button>
+    <button id="btn-crit">p<sub>c</sub></button>
+    <button id="btn-super">p<sub>c</sub> + 0.05</button>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<script>
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+const probSlider = document.getElementById('prob');
+const probVal = document.getElementById('prob-val');
+const sizeSlider = document.getElementById('size');
+const sizeVal = document.getElementById('size-val');
+const statsEl = document.getElementById('stats');
+
+let N = 120;
+let p = 0.593;
+let thresholds = null;
+let cells = null;
+let parent = null;
+let rank = null;
+let sweepId = null;
+
+const CANVAS_SIZE = 600;
+canvas.width = CANVAS_SIZE;
+canvas.height = CANVAS_SIZE;
+
+function find(x) {
+  while (parent[x] !== x) {
+    parent[x] = parent[parent[x]];
+    x = parent[x];
+  }
+  return x;
+}
+
+function union(a, b) {
+  a = find(a);
+  b = find(b);
+  if (a === b) return;
+  if (rank[a] < rank[b]) { const t = a; a = b; b = t; }
+  parent[b] = a;
+  if (rank[a] === rank[b]) rank[a]++;
+}
+
+function rollThresholds() {
+  const total = N * N;
+  thresholds = new Float32Array(total);
+  for (let i = 0; i < total; i++) {
+    thresholds[i] = Math.random();
+  }
+}
+
+function generate() {
+  const total = N * N;
+  if (!thresholds || thresholds.length !== total) rollThresholds();
+  cells = new Uint8Array(total);
+  parent = new Int32Array(total);
+  rank = new Int32Array(total);
+
+  for (let i = 0; i < total; i++) {
+    cells[i] = (thresholds[i] < p) ? 1 : 0;
+    parent[i] = i;
+    rank[i] = 0;
+  }
+
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const idx = r * N + c;
+      if (!cells[idx]) continue;
+      if (c + 1 < N && cells[idx + 1]) union(idx, idx + 1);
+      if (r + 1 < N && cells[idx + N]) union(idx, idx + N);
+    }
+  }
+}
+
+function analyze() {
+  const clusterSizes = new Map();
+  const topRoots = new Set();
+  const bottomRoots = new Set();
+
+  for (let c = 0; c < N; c++) {
+    if (cells[c]) topRoots.add(find(c));
+    const bi = (N - 1) * N + c;
+    if (cells[bi]) bottomRoots.add(find(bi));
+  }
+
+  let spanningRoot = -1;
+  for (const r of topRoots) {
+    if (bottomRoots.has(r)) { spanningRoot = r; break; }
+  }
+
+  let filledCount = 0;
+  for (let i = 0; i < N * N; i++) {
+    if (!cells[i]) continue;
+    filledCount++;
+    const root = find(i);
+    clusterSizes.set(root, (clusterSizes.get(root) || 0) + 1);
+  }
+
+  let largestSize = 0;
+  let largestRoot = -1;
+  for (const [root, size] of clusterSizes) {
+    if (size > largestSize) { largestSize = size; largestRoot = root; }
+  }
+
+  return {
+    clusterCount: clusterSizes.size,
+    largestSize,
+    largestRoot,
+    spanningRoot,
+    filledCount,
+    clusterSizes
+  };
+}
+
+function hashColor(root, isSpanning) {
+  if (isSpanning) return [196, 90, 60];
+  let h = root * 2654435761;
+  h = ((h >>> 16) ^ h) * 0x45d9f3b;
+  h = ((h >>> 16) ^ h) * 0x45d9f3b;
+  h = (h >>> 16) ^ h;
+  const hue = (h & 0xff) / 255 * 360;
+  const sat = 0.35 + ((h >> 8) & 0xff) / 255 * 0.3;
+  const lit = 0.45 + ((h >> 16) & 0xff) / 255 * 0.2;
+  return hslToRgb(hue, sat, lit);
+}
+
+function hslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255)
+  ];
+}
+
+function draw(info) {
+  const cellSize = CANVAS_SIZE / N;
+  const imgData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+  const data = imgData.data;
+
+  const colorCache = new Map();
+
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const idx = r * N + c;
+      let rgb;
+      if (!cells[idx]) {
+        rgb = [250, 249, 246];
+      } else {
+        const root = find(idx);
+        if (!colorCache.has(root)) {
+          const isSpanning = root === info.spanningRoot ||
+            (info.spanningRoot !== -1 && find(root) === find(info.spanningRoot));
+          colorCache.set(root, hashColor(root, isSpanning));
+        }
+        rgb = colorCache.get(root);
+      }
+
+      const px0 = Math.floor(c * cellSize);
+      const py0 = Math.floor(r * cellSize);
+      const px1 = Math.floor((c + 1) * cellSize);
+      const py1 = Math.floor((r + 1) * cellSize);
+
+      for (let py = py0; py < py1; py++) {
+        for (let px = px0; px < px1; px++) {
+          const off = (py * CANVAS_SIZE + px) * 4;
+          data[off] = rgb[0];
+          data[off + 1] = rgb[1];
+          data[off + 2] = rgb[2];
+          data[off + 3] = 255;
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function updateStats(info) {
+  const spanText = info.spanningRoot !== -1
+    ? '<span class="spanning">spanning cluster exists</span>'
+    : '<span class="no-spanning">no spanning cluster</span>';
+
+  const spanSize = info.spanningRoot !== -1
+    ? info.clusterSizes.get(info.spanningRoot) || 0
+    : 0;
+
+  const pct = info.filledCount > 0
+    ? (info.largestSize / info.filledCount * 100).toFixed(1)
+    : '0.0';
+
+  statsEl.innerHTML = [
+    `${info.filledCount.toLocaleString()} filled of ${(N*N).toLocaleString()} ` +
+    `(${(info.filledCount / (N*N) * 100).toFixed(1)}%) · ` +
+    `${info.clusterCount.toLocaleString()} clusters`,
+    `largest cluster: ${info.largestSize.toLocaleString()} cells (${pct}% of filled)`,
+    spanText + (spanSize > 0 ? ` · ${spanSize.toLocaleString()} cells` : '')
+  ].join('<br>');
+}
+
+function update() {
+  generate();
+  const info = analyze();
+  draw(info);
+  updateStats(info);
+}
+
+probSlider.addEventListener('input', () => {
+  p = probSlider.value / 1000;
+  probVal.textContent = p.toFixed(3);
+  update();
+});
+
+sizeSlider.addEventListener('input', () => {
+  N = parseInt(sizeSlider.value);
+  sizeVal.textContent = N;
+  rollThresholds();
+  update();
+});
+
+document.getElementById('btn-sample').addEventListener('click', () => {
+  rollThresholds();
+  update();
+});
+
+document.getElementById('btn-sub').addEventListener('click', () => {
+  p = 0.5427;
+  probSlider.value = 543;
+  probVal.textContent = '0.543';
+  update();
+});
+
+document.getElementById('btn-crit').addEventListener('click', () => {
+  p = 0.5927;
+  probSlider.value = 593;
+  probVal.textContent = '0.593';
+  update();
+});
+
+document.getElementById('btn-super').addEventListener('click', () => {
+  p = 0.6427;
+  probSlider.value = 643;
+  probVal.textContent = '0.643';
+  update();
+});
+
+document.getElementById('btn-sweep').addEventListener('click', () => {
+  if (sweepId) { cancelAnimationFrame(sweepId); sweepId = null;
+    document.getElementById('btn-sweep').classList.remove('active'); return; }
+  let current = 0;
+  const step = 2;
+  const btn = document.getElementById('btn-sweep');
+  btn.classList.add('active');
+  rollThresholds();
+
+  function tick() {
+    current += step;
+    if (current > 1000) {
+      sweepId = null;
+      btn.classList.remove('active');
+      return;
+    }
+    p = current / 1000;
+    probSlider.value = current;
+    probVal.textContent = p.toFixed(3);
+    update();
+    sweepId = requestAnimationFrame(tick);
+  }
+  tick();
+});
+
+rollThresholds();
+update();
+</script>
+</body>
+</html>

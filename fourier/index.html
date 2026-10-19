@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fourier Epicycles</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1a1a1e;
+  color: #d4d0c8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+  user-select: none;
+}
+h1 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.3rem;
+  color: #e8e4dc;
+}
+.note {
+  font-size: 0.8rem;
+  color: #777;
+  margin-bottom: 1.5rem;
+  max-width: 640px;
+  text-align: center;
+  line-height: 1.5;
+}
+.canvas-wrap {
+  position: relative;
+  margin-bottom: 1.2rem;
+}
+canvas {
+  border: 1px solid #333;
+  background: #0d0d10;
+  display: block;
+}
+#draw-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.85rem;
+  color: #555;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 1.2rem;
+  width: 100%;
+  max-width: 640px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+}
+.row label {
+  font-size: 0.78rem;
+  color: #888;
+  min-width: 72px;
+  text-align: right;
+}
+.row input[type="range"] {
+  flex: 1;
+  accent-color: #b08050;
+  height: 4px;
+}
+.row .value {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: #d4d0c8;
+  min-width: 40px;
+}
+.button-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+button {
+  font-family: inherit;
+  font-size: 0.73rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid #444;
+  background: #252528;
+  color: #d4d0c8;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+button:hover { background: #333; border-color: #666; }
+button.active {
+  background: #b08050;
+  color: #1a1a1e;
+  border-color: #b08050;
+}
+.separator {
+  width: 100%;
+  height: 1px;
+  background: #2a2a2e;
+  margin: 0.3rem 0;
+}
+canvas#spectrum {
+  margin-top: 0.5rem;
+  border: 1px solid #2a2a2e;
+  background: #0d0d10;
+}
+.info {
+  font-size: 0.72rem;
+  color: #666;
+  text-align: center;
+  line-height: 1.6;
+  max-width: 640px;
+  margin-top: 0.5rem;
+}
+</style>
+</head>
+<body>
+
+<h1>Fourier Epicycles</h1>
+<p class="note">
+  Any closed curve decomposes into rotating circles. Each circle is one
+  frequency component; their sum reconstructs the original path.
+  Draw a shape, then watch the epicycles trace it.
+</p>
+
+<div class="canvas-wrap">
+  <canvas id="cv" width="700" height="700"></canvas>
+  <div id="draw-hint">draw a closed shape</div>
+</div>
+
+<div class="controls">
+  <div class="button-row" id="presets"></div>
+  <div class="separator"></div>
+  <div class="row">
+    <label>harmonics</label>
+    <input type="range" id="harmonics" min="1" max="100" value="100">
+    <span class="value" id="harmonics-val">all</span>
+  </div>
+  <div class="row">
+    <label>speed</label>
+    <input type="range" id="speed" min="1" max="200" value="40">
+    <span class="value" id="speed-val">1.0x</span>
+  </div>
+  <div class="row">
+    <label>trail</label>
+    <input type="range" id="trail" min="0" max="100" value="100">
+    <span class="value" id="trail-val">full</span>
+  </div>
+  <div class="separator"></div>
+  <div class="button-row">
+    <button id="btn-play">pause</button>
+    <button id="btn-circles">hide circles</button>
+    <button id="btn-clear">clear</button>
+  </div>
+</div>
+
+<canvas id="spectrum" width="640" height="100"></canvas>
+
+<p class="info">
+  The discrete Fourier transform treats each (x, y) sample as a complex
+  number. Sorting by amplitude puts the largest circles first. Fewer
+  harmonics reveal which frequencies carry the shape's identity.
+</p>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const specCv = document.getElementById('spectrum');
+const specCtx = specCv.getContext('2d');
+const hint = document.getElementById('draw-hint');
+
+const W = cv.width, H = cv.height;
+const CX = W / 2, CY = H / 2;
+
+let rawPoints = [];
+let coeffs = [];
+let sortedIndices = [];
+let trailPoints = [];
+let time = 0;
+let playing = true;
+let showCircles = true;
+let maxHarmonics = 100;
+let speedFactor = 1;
+let trailFraction = 1;
+let isDrawing = false;
+let hasShape = false;
+
+// --- DFT ---
+
+function dft(points) {
+  const N = points.length;
+  const result = [];
+  for (let n = 0; n < N; n++) {
+    let re = 0, im = 0;
+    for (let k = 0; k < N; k++) {
+      const angle = -2 * Math.PI * n * k / N;
+      re += points[k].re * Math.cos(angle) - points[k].im * Math.sin(angle);
+      im += points[k].re * Math.sin(angle) + points[k].im * Math.cos(angle);
+    }
+    re /= N;
+    im /= N;
+    const amp = Math.sqrt(re * re + im * im);
+    const phase = Math.atan2(im, re);
+    const freq = n;
+    result.push({ re, im, amp, phase, freq });
+  }
+  return result;
+}
+
+function computeCoeffs(points) {
+  coeffs = dft(points);
+  sortedIndices = coeffs.map((_, i) => i);
+  sortedIndices.sort((a, b) => coeffs[b].amp - coeffs[a].amp);
+  trailPoints = [];
+  time = 0;
+
+  const slider = document.getElementById('harmonics');
+  slider.max = coeffs.length;
+  slider.value = coeffs.length;
+  maxHarmonics = coeffs.length;
+  document.getElementById('harmonics-val').textContent = 'all';
+
+  drawSpectrum();
+}
+
+// --- Drawing input ---
+
+function getCanvasPos(e) {
+  const rect = cv.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  isDrawing = true;
+  hasShape = false;
+  rawPoints = [];
+  coeffs = [];
+  trailPoints = [];
+  hint.style.opacity = '0';
+  const pos = getCanvasPos(e);
+  rawPoints.push(pos);
+}
+
+function moveDraw(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  const last = rawPoints[rawPoints.length - 1];
+  const dx = pos.x - last.x, dy = pos.y - last.y;
+  if (dx * dx + dy * dy > 16) {
+    rawPoints.push(pos);
+  }
+}
+
+function endDraw(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  isDrawing = false;
+  if (rawPoints.length < 8) {
+    rawPoints = [];
+    hint.style.opacity = '1';
+    return;
+  }
+  finishShape(rawPoints);
+}
+
+function finishShape(points) {
+  const resampled = resample(points, Math.min(points.length, 256));
+  const centered = center(resampled);
+  const complex = centered.map(p => ({ re: p.x, im: p.y }));
+  computeCoeffs(complex);
+  hasShape = true;
+  hint.style.opacity = '0';
+  setActivePreset(null);
+}
+
+function resample(points, n) {
+  const lengths = [0];
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    lengths.push(lengths[i - 1] + Math.sqrt(dx * dx + dy * dy));
+  }
+  const total = lengths[lengths.length - 1];
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    const target = (i / n) * total;
+    let j = 1;
+    while (j < lengths.length - 1 && lengths[j] < target) j++;
+    const seg = lengths[j] - lengths[j - 1];
+    const t = seg > 0 ? (target - lengths[j - 1]) / seg : 0;
+    result.push({
+      x: points[j - 1].x + t * (points[j].x - points[j - 1].x),
+      y: points[j - 1].y + t * (points[j].y - points[j - 1].y)
+    });
+  }
+  return result;
+}
+
+function center(points) {
+  let cx = 0, cy = 0;
+  for (const p of points) { cx += p.x; cy += p.y; }
+  cx /= points.length; cy /= points.length;
+  const dx = CX - cx, dy = CY - cy;
+  return points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+}
+
+cv.addEventListener('mousedown', startDraw);
+cv.addEventListener('mousemove', moveDraw);
+cv.addEventListener('mouseup', endDraw);
+cv.addEventListener('mouseleave', endDraw);
+cv.addEventListener('touchstart', startDraw, { passive: false });
+cv.addEventListener('touchmove', moveDraw, { passive: false });
+cv.addEventListener('touchend', endDraw, { passive: false });
+
+// --- Presets ---
+
+const PRESETS = {
+  circle: () => {
+    const pts = [];
+    for (let i = 0; i < 128; i++) {
+      const t = (i / 128) * Math.PI * 2;
+      pts.push({ x: CX + 180 * Math.cos(t), y: CY + 180 * Math.sin(t) });
+    }
+    return pts;
+  },
+  square: () => {
+    const s = 180, pts = [];
+    for (let i = 0; i < 64; i++) { const t = i / 64; pts.push({ x: CX - s + 2 * s * t, y: CY - s }); }
+    for (let i = 0; i < 64; i++) { const t = i / 64; pts.push({ x: CX + s, y: CY - s + 2 * s * t }); }
+    for (let i = 0; i < 64; i++) { const t = i / 64; pts.push({ x: CX + s - 2 * s * t, y: CY + s }); }
+    for (let i = 0; i < 64; i++) { const t = i / 64; pts.push({ x: CX - s, y: CY + s - 2 * s * t }); }
+    return pts;
+  },
+  star: () => {
+    const pts = [], N = 5, outer = 200, inner = 80;
+    const verts = [];
+    for (let i = 0; i < N; i++) {
+      const ao = (i / N) * Math.PI * 2 - Math.PI / 2;
+      const ai = ((i + 0.5) / N) * Math.PI * 2 - Math.PI / 2;
+      verts.push({ x: CX + outer * Math.cos(ao), y: CY + outer * Math.sin(ao) });
+      verts.push({ x: CX + inner * Math.cos(ai), y: CY + inner * Math.sin(ai) });
+    }
+    for (let i = 0; i < verts.length; i++) {
+      const next = verts[(i + 1) % verts.length];
+      const cur = verts[i];
+      for (let t = 0; t < 20; t++) {
+        const frac = t / 20;
+        pts.push({ x: cur.x + frac * (next.x - cur.x), y: cur.y + frac * (next.y - cur.y) });
+      }
+    }
+    return pts;
+  },
+  'figure 8': () => {
+    const pts = [];
+    for (let i = 0; i < 256; i++) {
+      const t = (i / 256) * Math.PI * 2;
+      pts.push({ x: CX + 200 * Math.sin(t), y: CY + 120 * Math.sin(2 * t) });
+    }
+    return pts;
+  },
+  heart: () => {
+    const pts = [];
+    for (let i = 0; i < 256; i++) {
+      const t = (i / 256) * Math.PI * 2;
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+      pts.push({ x: CX + x * 12, y: CY + y * 12 });
+    }
+    return pts;
+  },
+  trefoil: () => {
+    const pts = [];
+    for (let i = 0; i < 256; i++) {
+      const t = (i / 256) * Math.PI * 2;
+      const r = 160 + 80 * Math.cos(3 * t);
+      pts.push({ x: CX + r * Math.cos(t), y: CY + r * Math.sin(t) });
+    }
+    return pts;
+  },
+  flower: () => {
+    const pts = [];
+    for (let i = 0; i < 256; i++) {
+      const t = (i / 256) * Math.PI * 2;
+      const r = 100 + 100 * Math.abs(Math.cos(2.5 * t));
+      pts.push({ x: CX + r * Math.cos(t), y: CY + r * Math.sin(t) });
+    }
+    return pts;
+  }
+};
+
+function setActivePreset(name) {
+  document.querySelectorAll('#presets button').forEach(b => {
+    b.classList.toggle('active', b.dataset.name === name);
+  });
+}
+
+function loadPreset(name) {
+  const pts = PRESETS[name]();
+  rawPoints = pts;
+  finishShape(pts);
+  setActivePreset(name);
+}
+
+const presetsEl = document.getElementById('presets');
+for (const name of Object.keys(PRESETS)) {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.dataset.name = name;
+  btn.addEventListener('click', () => loadPreset(name));
+  presetsEl.appendChild(btn);
+}
+
+// --- Controls ---
+
+document.getElementById('harmonics').addEventListener('input', e => {
+  maxHarmonics = parseInt(e.target.value);
+  const label = document.getElementById('harmonics-val');
+  label.textContent = maxHarmonics >= coeffs.length ? 'all' : maxHarmonics;
+  trailPoints = [];
+  time = 0;
+  drawSpectrum();
+});
+
+document.getElementById('speed').addEventListener('input', e => {
+  speedFactor = parseInt(e.target.value) / 40;
+  document.getElementById('speed-val').textContent = speedFactor.toFixed(1) + 'x';
+});
+
+document.getElementById('trail').addEventListener('input', e => {
+  trailFraction = parseInt(e.target.value) / 100;
+  const label = document.getElementById('trail-val');
+  label.textContent = trailFraction >= 1 ? 'full' : Math.round(trailFraction * 100) + '%';
+});
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  playing = !playing;
+  document.getElementById('btn-play').textContent = playing ? 'pause' : 'play';
+});
+
+document.getElementById('btn-circles').addEventListener('click', () => {
+  showCircles = !showCircles;
+  document.getElementById('btn-circles').textContent = showCircles ? 'hide circles' : 'show circles';
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  rawPoints = [];
+  coeffs = [];
+  trailPoints = [];
+  hasShape = false;
+  time = 0;
+  hint.style.opacity = '1';
+  setActivePreset(null);
+  specCtx.clearRect(0, 0, specCv.width, specCv.height);
+});
+
+// --- Epicycle computation ---
+
+function evalEpicycles(t, numHarmonics) {
+  let x = 0, y = 0;
+  const n = Math.min(numHarmonics, sortedIndices.length);
+  const circles = [];
+  for (let i = 0; i < n; i++) {
+    const idx = sortedIndices[i];
+    const c = coeffs[idx];
+    const px = x, py = y;
+    const angle = 2 * Math.PI * c.freq * t + c.phase;
+    x += c.amp * Math.cos(angle);
+    y += c.amp * Math.sin(angle);
+    circles.push({ cx: px, cy: py, r: c.amp, ex: x, ey: y });
+  }
+  return { x, y, circles };
+}
+
+// --- Spectrum ---
+
+function drawSpectrum() {
+  const sw = specCv.width, sh = specCv.height;
+  specCtx.clearRect(0, 0, sw, sh);
+  if (coeffs.length === 0) return;
+
+  const n = sortedIndices.length;
+  const maxAmp = coeffs[sortedIndices[0]].amp || 1;
+  const barW = Math.max(1, (sw - 20) / n);
+
+  for (let i = 0; i < n; i++) {
+    const c = coeffs[sortedIndices[i]];
+    const h = (c.amp / maxAmp) * (sh - 20);
+    const x = 10 + i * barW;
+    const active = i < maxHarmonics;
+    specCtx.fillStyle = active ? 'rgba(176, 128, 80, 0.8)' : 'rgba(80, 80, 80, 0.3)';
+    specCtx.fillRect(x, sh - 10 - h, Math.max(1, barW - 1), h);
+  }
+
+  specCtx.fillStyle = '#555';
+  specCtx.font = '10px system-ui';
+  specCtx.textAlign = 'left';
+  specCtx.fillText('amplitude (sorted)', 10, 12);
+  if (maxHarmonics < n) {
+    specCtx.textAlign = 'right';
+    specCtx.fillText(maxHarmonics + ' / ' + n, sw - 10, 12);
+  }
+}
+
+// --- Render ---
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (isDrawing && rawPoints.length > 1) {
+    ctx.strokeStyle = 'rgba(176, 128, 80, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rawPoints[0].x, rawPoints[0].y);
+    for (let i = 1; i < rawPoints.length; i++) {
+      ctx.lineTo(rawPoints[i].x, rawPoints[i].y);
+    }
+    ctx.stroke();
+  }
+
+  if (!hasShape || coeffs.length === 0) {
+    requestAnimationFrame(render);
+    return;
+  }
+
+  const result = evalEpicycles(time, maxHarmonics);
+
+  if (playing) {
+    trailPoints.push({ x: result.x, y: result.y });
+    const maxTrail = trailFraction >= 1
+      ? coeffs.length * 2
+      : Math.max(1, Math.round(coeffs.length * trailFraction));
+    while (trailPoints.length > maxTrail) {
+      trailPoints.shift();
+    }
+  }
+
+  // Trail
+  if (trailPoints.length > 1) {
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 1; i < trailPoints.length; i++) {
+      const alpha = trailFraction >= 1
+        ? 0.85
+        : 0.15 + 0.7 * (i / trailPoints.length);
+      ctx.strokeStyle = `rgba(220, 200, 170, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(trailPoints[i - 1].x, trailPoints[i - 1].y);
+      ctx.lineTo(trailPoints[i].x, trailPoints[i].y);
+      ctx.stroke();
+    }
+  }
+
+  // Circles and arms
+  if (showCircles) {
+    for (const c of result.circles) {
+      if (c.r < 0.5) continue;
+      ctx.strokeStyle = 'rgba(100, 100, 110, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(c.cx, c.cy, c.r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(176, 128, 80, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(c.cx, c.cy);
+      ctx.lineTo(c.ex, c.ey);
+      ctx.stroke();
+    }
+
+    // Tip dot
+    ctx.fillStyle = '#b08050';
+    ctx.beginPath();
+    ctx.arc(result.x, result.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (playing) {
+    time += speedFactor / coeffs.length;
+    if (time >= 1) {
+      time -= 1;
+    }
+  }
+
+  requestAnimationFrame(render);
+}
+
+// Start with a preset
+loadPreset('star');
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

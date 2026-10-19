@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sounding</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #080c11;
+  color: #8898a8;
+  font-family: Georgia, 'Times New Roman', serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1rem 4rem;
+  min-height: 100vh;
+}
+h1 {
+  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: #7a8a98;
+  margin-bottom: 1.3rem;
+}
+canvas {
+  display: block;
+  cursor: crosshair;
+  max-width: 100%;
+}
+.hint {
+  font-size: 0.68rem;
+  color: #253040;
+  margin-top: 0.6rem;
+  letter-spacing: 0.06em;
+  transition: opacity 1.2s ease;
+}
+#reading {
+  max-width: 440px;
+  margin-top: 1.8rem;
+  line-height: 2;
+  font-size: 0.8rem;
+}
+#reading p {
+  margin-bottom: 0.2rem;
+  opacity: 0;
+  color: #506878;
+  animation: fadeIn 1s ease forwards;
+}
+#reading p.key-hint {
+  color: #1a2530;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  margin-top: 1rem;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<h1>sounding</h1>
+<canvas id="c"></canvas>
+<p class="hint" id="hint">click to sound</p>
+<div id="reading"></div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const hint = document.getElementById('hint');
+  const readingEl = document.getElementById('reading');
+
+  const W = 800, H = 500;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+
+  // --- Seeded PRNG ---
+  function mulberry32(s) {
+    return () => {
+      s |= 0; s = s + 0x6D2B79F5 | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = t + Math.imul(t ^ (t >>> 7), 61 | t) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(7291);
+
+  // --- Value noise ---
+  function hash2d(ix, iy, seed) {
+    let h = seed | 0;
+    h = (h + Math.imul(ix, 374761393)) | 0;
+    h = (h + Math.imul(iy, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  function vnoise(x, y, seed) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const a = hash2d(ix, iy, seed), b = hash2d(ix + 1, iy, seed);
+    const c = hash2d(ix, iy + 1, seed), d = hash2d(ix + 1, iy + 1, seed);
+    return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+  }
+
+  function fbm(x, y, oct, seed) {
+    let v = 0, a = 1, f = 1, m = 0;
+    for (let i = 0; i < oct; i++) {
+      v += vnoise(x * f, y * f, seed + i * 7919) * a;
+      m += a; a *= 0.5; f *= 2;
+    }
+    return v / m;
+  }
+
+  function smoothstep(e0, e1, x) {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  // --- Terrain ---
+  const GW = 120, GH = 75;
+  const depthGrid = Array.from({ length: GH }, () => new Float32Array(GW));
+
+  const CHARTED_GAP = 0.32;
+  const ACTUAL_GAP = 0.63;
+  const BAR_NX = 0.48;
+  const BAR_HW = 0.08;
+  const GAP_HR = 0.065;
+
+  for (let gy = 0; gy < GH; gy++) {
+    for (let gx = 0; gx < GW; gx++) {
+      const nx = gx / (GW - 1);
+      const ny = gy / (GH - 1);
+
+      let d = 8.5;
+
+      // Banks: shallow near top and bottom edges
+      d *= smoothstep(0, 0.16, Math.min(ny, 1 - ny));
+      d = Math.max(d, 1.2);
+
+      // Sandbar ridge across the middle
+      const bwave = 0.015 * Math.sin(ny * Math.PI * 5.5);
+      const bx = BAR_NX + bwave;
+      const bd = Math.abs(nx - bx) / BAR_HW;
+      if (bd < 1) d -= 5.5 * (1 - bd * bd);
+
+      // Actual gap in the bar
+      const gd = Math.abs(ny - ACTUAL_GAP) / GAP_HR;
+      if (gd < 1 && bd < 1) {
+        d += 7 * (1 - gd * gd) * Math.max(0, 1 - bd * bd);
+      }
+
+      // Noise texture
+      d += (fbm(nx * 7, ny * 7, 3, 42) - 0.5) * 1.1;
+
+      depthGrid[gy][gx] = Math.max(1.2, Math.min(12, d));
+    }
+  }
+
+  function depthAt(px, py) {
+    const gx = Math.max(0, Math.min(1, px / W)) * (GW - 1);
+    const gy = Math.max(0, Math.min(1, py / H)) * (GH - 1);
+    const ix = Math.min(Math.floor(gx), GW - 2);
+    const iy = Math.min(Math.floor(gy), GH - 2);
+    const fx = gx - ix, fy = gy - iy;
+    return (depthGrid[iy][ix] * (1 - fx) + depthGrid[iy][ix + 1] * fx) * (1 - fy) +
+           (depthGrid[iy + 1][ix] * (1 - fx) + depthGrid[iy + 1][ix + 1] * fx) * fy;
+  }
+
+  // --- Flow field ---
+  const flowGX = Array.from({ length: GH }, () => new Float32Array(GW));
+  const flowGY = Array.from({ length: GH }, () => new Float32Array(GW));
+
+  for (let gy = 0; gy < GH; gy++) {
+    for (let gx = 0; gx < GW; gx++) {
+      let vx = 1, vy = 0;
+      if (gy > 0 && gy < GH - 1 && gx > 0 && gx < GW - 1) {
+        const ddx = (depthGrid[gy][gx + 1] - depthGrid[gy][gx - 1]) * 0.5;
+        const ddy = (depthGrid[gy + 1][gx] - depthGrid[gy - 1][gx]) * 0.5;
+        vx += ddx * 0.35;
+        vy += ddy * 0.35;
+      }
+      const d = depthGrid[gy][gx];
+      const sp = 1 + 4 / Math.max(d, 1.2);
+      const len = Math.sqrt(vx * vx + vy * vy) || 1;
+      flowGX[gy][gx] = vx / len * sp;
+      flowGY[gy][gx] = vy / len * sp;
+    }
+  }
+
+  function flowAt(px, py) {
+    const gxf = Math.max(0, Math.min(1, px / W)) * (GW - 1);
+    const gyf = Math.max(0, Math.min(1, py / H)) * (GH - 1);
+    const ix = Math.max(0, Math.min(Math.floor(gxf), GW - 2));
+    const iy = Math.max(0, Math.min(Math.floor(gyf), GH - 2));
+    const fx = gxf - ix, fy = gyf - iy;
+    const vx = (flowGX[iy][ix] * (1 - fx) + flowGX[iy][ix + 1] * fx) * (1 - fy) +
+               (flowGX[iy + 1][ix] * (1 - fx) + flowGX[iy + 1][ix + 1] * fx) * fy;
+    const vy = (flowGY[iy][ix] * (1 - fx) + flowGY[iy][ix + 1] * fx) * (1 - fy) +
+               (flowGY[iy + 1][ix] * (1 - fx) + flowGY[iy + 1][ix + 1] * fx) * fy;
+    return [vx, vy];
+  }
+
+  // --- Pre-rendered layers ---
+
+  // Background: very subtle depth coloring
+  const bgLayer = document.createElement('canvas');
+  bgLayer.width = W; bgLayer.height = H;
+  const bgCtx = bgLayer.getContext('2d');
+  const bgData = bgCtx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = depthAt(x, y);
+      const t = Math.min(d / 11, 1);
+      const i = (y * W + x) * 4;
+      bgData.data[i] = 10 + Math.round((1 - t) * 10);
+      bgData.data[i + 1] = 14 + Math.round((1 - t) * 6);
+      bgData.data[i + 2] = 19 + Math.round(t * 7);
+      bgData.data[i + 3] = 255;
+    }
+  }
+  bgCtx.putImageData(bgData, 0, 0);
+
+  // Reveal: depth map with visible contrast
+  const revLayer = document.createElement('canvas');
+  revLayer.width = W; revLayer.height = H;
+  const revCtx = revLayer.getContext('2d');
+  const revData = revCtx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = depthAt(x, y);
+      const t = Math.min(d / 11, 1);
+      const i = (y * W + x) * 4;
+      revData.data[i] = Math.round(110 - t * 75);
+      revData.data[i + 1] = Math.round(135 - t * 60);
+      revData.data[i + 2] = Math.round(65 + t * 65);
+      revData.data[i + 3] = 130;
+    }
+  }
+  revCtx.putImageData(revData, 0, 0);
+
+  // Particle color lookup (by depth, avoids string alloc in hot loop)
+  const pColors = new Array(130);
+  for (let i = 0; i < 130; i++) {
+    const d = i / 10;
+    const a = 0.15 + 0.30 * (1 - Math.min(d / 10, 1));
+    pColors[i] = 'rgba(155,200,210,' + a.toFixed(3) + ')';
+  }
+
+  // --- Particles ---
+  const NP = 1800;
+  const ppx = new Float32Array(NP);
+  const ppy = new Float32Array(NP);
+  const opx = new Float32Array(NP);
+  const opy = new Float32Array(NP);
+
+  function resetP(i, anywhere) {
+    ppx[i] = anywhere ? rand() * W : rand() * 12;
+    ppy[i] = 20 + rand() * (H - 40);
+    opx[i] = ppx[i];
+    opy[i] = ppy[i];
+  }
+  for (let i = 0; i < NP; i++) resetP(i, true);
+
+  function updateParticles() {
+    for (let i = 0; i < NP; i++) {
+      opx[i] = ppx[i];
+      opy[i] = ppy[i];
+      const [vx, vy] = flowAt(ppx[i], ppy[i]);
+      ppx[i] += vx + (Math.random() - 0.5) * 0.2;
+      ppy[i] += vy + (Math.random() - 0.5) * 0.2;
+      if (ppx[i] > W + 8 || ppx[i] < -8 || ppy[i] < 3 || ppy[i] > H - 3) {
+        resetP(i, false);
+      }
+    }
+  }
+
+  // --- Charted channel geometry ---
+  function chartCenterY(nx) {
+    const offset = 0.16 * Math.exp(-((nx - BAR_NX) / 0.28) * ((nx - BAR_NX) / 0.28));
+    return (0.48 - offset) * H;
+  }
+
+  const chartLabels = [
+    [0.12, '9.2'], [0.30, '9.0'], [0.48, '8.8'], [0.66, '9.1'], [0.87, '9.0']
+  ];
+
+  // --- State ---
+  const soundings = [];
+  let revealed = false;
+  const shown = {};
+  let idleFrames = 0;
+
+  // --- Events ---
+  canvas.addEventListener('click', (e) => {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W;
+    const y = (e.clientY - r.top) / r.height * H;
+    const d = depthAt(x, y);
+    soundings.push({ x, y, depth: d });
+    idleFrames = 0;
+    checkObs(x, y, d);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') revealed = !revealed;
+  });
+
+  function addObs(text, cls) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    if (cls) p.className = cls;
+    readingEl.appendChild(p);
+  }
+
+  function checkObs(x, y, d) {
+    const ny = y / H;
+    const n = soundings.length;
+    const inCharted = Math.abs(ny - CHARTED_GAP) < 0.07;
+
+    if (n === 1 && !shown.first) {
+      shown.first = true;
+      hint.style.opacity = '0';
+    }
+    if (n >= 3 && !shown.three) {
+      shown.three = true;
+      addObs('Three points.');
+    }
+    if (inCharted && d < 4.5 && !shown.chart) {
+      shown.chart = true;
+      addObs('The chart says nine meters here.');
+    }
+    if (n >= 8 && !shown.unchanged) {
+      shown.unchanged = true;
+      addObs('The particles have not changed since you arrived.');
+    }
+    if (n >= 14 && !shown.crowd) {
+      shown.crowd = true;
+      addObs('Watch where they crowd together.');
+      addObs('r', 'key-hint');
+    }
+  }
+
+  function checkIdle() {
+    if (!shown.first) return;
+    idleFrames++;
+    if (idleFrames > 2700 && !shown.idle) {
+      shown.idle = true;
+      addObs('They have been doing this the whole time.');
+    }
+  }
+
+  // --- Drawing ---
+  function drawChart() {
+    const hw = 22;
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = 'rgba(130,95,45,0.22)';
+
+    // Channel boundaries
+    for (const sign of [-1, 1]) {
+      ctx.beginPath();
+      for (let i = 0; i <= 80; i++) {
+        const nx = i / 80;
+        const cy = chartCenterY(nx) + sign * hw;
+        if (i === 0) ctx.moveTo(nx * W, cy);
+        else ctx.lineTo(nx * W, cy);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Depth annotations
+    ctx.font = '8px Courier New';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(130,95,45,0.16)';
+    for (const [nx, label] of chartLabels) {
+      ctx.fillText(label, nx * W - 7, chartCenterY(nx) + 2);
+    }
+
+    // Survey date
+    ctx.fillStyle = 'rgba(130,95,45,0.11)';
+    ctx.fillText('survey: mar', 14, chartCenterY(0.04) - 28);
+
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    ctx.lineWidth = 1;
+    for (let i = 0; i < NP; i++) {
+      const dx = ppx[i] - opx[i];
+      const dy = ppy[i] - opy[i];
+      const sp = Math.sqrt(dx * dx + dy * dy);
+      if (sp < 0.05) continue;
+
+      const d = depthAt(ppx[i], ppy[i]);
+      const ci = Math.min(129, Math.max(0, Math.round(d * 10)));
+
+      const ext = Math.max(1, sp * 1.8);
+      const ex = ppx[i] - (dx / sp) * ext;
+      const ey = ppy[i] - (dy / sp) * ext;
+
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ppx[i], ppy[i]);
+      ctx.strokeStyle = pColors[ci];
+      ctx.stroke();
+    }
+  }
+
+  function drawSoundings() {
+    ctx.textBaseline = 'middle';
+    for (const s of soundings) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(210,155,50,0.75)';
+      ctx.fill();
+
+      ctx.font = '9px Courier New';
+      ctx.fillStyle = 'rgba(210,155,50,0.6)';
+      ctx.fillText(s.depth.toFixed(1), s.x + 6, s.y);
+    }
+  }
+
+  // --- Animation loop ---
+  function frame() {
+    updateParticles();
+    checkIdle();
+
+    ctx.drawImage(bgLayer, 0, 0, W, H);
+    if (revealed) ctx.drawImage(revLayer, 0, 0, W, H);
+    drawChart();
+    drawParticles();
+    drawSoundings();
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

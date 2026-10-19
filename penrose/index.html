@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Penrose</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #080c11;
+  overflow: hidden;
+  height: 100vh;
+}
+canvas {
+  display: block;
+  cursor: crosshair;
+}
+.ui {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  font-family: Georgia, 'Times New Roman', serif;
+  user-select: none;
+  pointer-events: none;
+}
+.title {
+  font-size: 1rem;
+  color: #4a5a68;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+}
+.sub {
+  font-size: 0.72rem;
+  color: #1e2e3e;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
+}
+#info {
+  font-size: 0.68rem;
+  color: #2a3a48;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.hint {
+  font-size: 0.6rem;
+  color: #151e28;
+  letter-spacing: 0.04em;
+  margin-top: 0.2rem;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="ui">
+  <div class="title">Penrose</div>
+  <div class="sub">aperiodic order</div>
+  <div id="info"></div>
+  <div class="hint">click subdivide &middot; scroll zoom &middot; drag pan &middot; c color &middot; r reset</div>
+</div>
+<script>
+const PHI = (1 + Math.sqrt(5)) / 2;
+const THIN = 0;
+const THICK = 1;
+const TYPE_FILL = ['#193850', '#3f2245'];
+const ORIENT_FILL = ['#6e3b3b', '#6e5f3b', '#3b6e4e', '#3b4e6e', '#5f3b6e'];
+const EDGE = '#0d1520';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const info = document.getElementById('info');
+
+let triangles, generation;
+let colorMode = 0;
+let cam = { x: 0, y: 0, scale: 1 };
+let drag = null;
+
+function orientBin(tri) {
+  var A = tri[1], B = tri[2], C = tri[3];
+  var mx = (B[0] + C[0]) * 0.5, my = (B[1] + C[1]) * 0.5;
+  var a = Math.atan2(my - A[1], mx - A[0]);
+  if (a < 0) a += Math.PI * 2;
+  return Math.round(a * 5 / Math.PI) % 5;
+}
+
+function lerp(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+function sun(r) {
+  const out = [];
+  for (let i = 0; i < 10; i++) {
+    const a = Math.PI * 2 * i / 10;
+    const b = Math.PI * 2 * (i + 1) / 10;
+    const B = [r * Math.cos(a), r * Math.sin(a)];
+    const C = [r * Math.cos(b), r * Math.sin(b)];
+    out.push(i % 2 === 0
+      ? [THICK, [0, 0], B, C]
+      : [THICK, [0, 0], C, B]);
+  }
+  return out;
+}
+
+function subdivide(tris) {
+  const out = [];
+  for (const [type, A, B, C] of tris) {
+    if (type === THIN) {
+      const P = lerp(A, B, 1 / PHI);
+      out.push([THIN, C, P, B]);
+      out.push([THICK, P, C, A]);
+    } else {
+      const Q = lerp(B, A, 1 / PHI);
+      const R = lerp(B, C, 1 / PHI);
+      out.push([THICK, R, C, A]);
+      out.push([THICK, Q, R, B]);
+      out.push([THIN, R, Q, A]);
+    }
+  }
+  return out;
+}
+
+function w2s(p) {
+  return [
+    (p[0] - cam.x) * cam.scale + canvas.width * 0.5,
+    (p[1] - cam.y) * cam.scale + canvas.height * 0.5
+  ];
+}
+
+function render() {
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#080c11';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.lineWidth = 0.5;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = EDGE;
+
+  var fills = colorMode === 0 ? TYPE_FILL : ORIENT_FILL;
+  var count = colorMode === 0 ? 2 : 5;
+
+  for (var b = 0; b < count; b++) {
+    ctx.fillStyle = fills[b];
+    ctx.beginPath();
+    for (var i = 0; i < triangles.length; i++) {
+      var tri = triangles[i];
+      var bin = colorMode === 0 ? tri[0] : orientBin(tri);
+      if (bin !== b) continue;
+      var sa = w2s(tri[1]), sb = w2s(tri[2]), sc = w2s(tri[3]);
+      var mnX = Math.min(sa[0], sb[0], sc[0]);
+      var mxX = Math.max(sa[0], sb[0], sc[0]);
+      var mnY = Math.min(sa[1], sb[1], sc[1]);
+      var mxY = Math.max(sa[1], sb[1], sc[1]);
+      if (mxX < -10 || mnX > w + 10 || mxY < -10 || mnY > h + 10) continue;
+      ctx.moveTo(sa[0], sa[1]);
+      ctx.lineTo(sb[0], sb[1]);
+      ctx.lineTo(sc[0], sc[1]);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  var mode = colorMode === 0 ? 'type' : 'orientation';
+  info.textContent = 'generation ' + generation + ' · ' + Math.floor(triangles.length / 2) + ' tiles · ' + mode;
+}
+
+function init() {
+  const r = Math.max(canvas.width, canvas.height) * 0.7;
+  triangles = sun(r);
+  generation = 0;
+  for (let i = 0; i < 5; i++) {
+    triangles = subdivide(triangles);
+    generation++;
+  }
+  cam = { x: 0, y: 0, scale: 1 };
+  render();
+}
+
+canvas.addEventListener('mousedown', function(e) {
+  drag = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y, moved: false };
+  canvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', function(e) {
+  if (!drag) return;
+  var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (drag.moved) {
+    cam.x = drag.cx - dx / cam.scale;
+    cam.y = drag.cy - dy / cam.scale;
+    render();
+  }
+});
+
+window.addEventListener('mouseup', function() {
+  if (drag && !drag.moved && generation < 9) {
+    triangles = subdivide(triangles);
+    generation++;
+    render();
+  }
+  drag = null;
+  canvas.style.cursor = 'crosshair';
+});
+
+canvas.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  var f = e.deltaY > 0 ? 0.92 : 1.08;
+  var mx = e.clientX - canvas.width * 0.5;
+  var my = e.clientY - canvas.height * 0.5;
+  cam.x += mx / cam.scale - mx / (cam.scale * f);
+  cam.y += my / cam.scale - my / (cam.scale * f);
+  cam.scale *= f;
+  render();
+}, { passive: false });
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'r') init();
+  if (e.key === 'c') { colorMode = (colorMode + 1) % 2; render(); }
+});
+
+window.addEventListener('resize', function() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  render();
+});
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+init();
+</script>
+</body>
+</html>

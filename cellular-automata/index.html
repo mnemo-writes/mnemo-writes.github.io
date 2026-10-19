@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Elementary Cellular Automata</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0b0b0f;
+    color: #b0b0c0;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    color: #888;
+  }
+  .controls {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 14px;
+    max-width: 860px;
+  }
+  .ctrl {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ctrl label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+  }
+  input[type="number"] {
+    background: #14141e;
+    border: 1px solid #2a2a3a;
+    color: #d0d0e0;
+    padding: 3px 6px;
+    width: 56px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 2px;
+  }
+  input[type="number"]:focus { border-color: #4a4a6a; outline: none; }
+  select, button {
+    background: #14141e;
+    border: 1px solid #2a2a3a;
+    color: #b0b0c0;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  button:hover { background: #1e1e2e; border-color: #3a3a5a; }
+  .rule-table {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .rule-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+  }
+  .rule-cell:hover { background: #1a1a28; }
+  .nbr { display: flex; gap: 1px; }
+  .nbr .c, .out {
+    width: 11px;
+    height: 11px;
+    border: 1px solid #2a2a3a;
+  }
+  .nbr .c.on, .out.on { background: #c89428; }
+  .nbr .c.off, .out.off { background: #0b0b0f; }
+  .arr { font-size: 9px; color: #444; margin: 1px 0; }
+  canvas {
+    border: 1px solid #1a1a28;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .note {
+    margin-top: 10px;
+    font-size: 10px;
+    color: #444;
+    max-width: 700px;
+    text-align: center;
+    line-height: 1.7;
+  }
+  .note em { color: #777; font-style: normal; }
+  #gallery {
+    display: none;
+    flex-wrap: wrap;
+    gap: 2px;
+    justify-content: center;
+    max-width: 900px;
+    margin-top: 10px;
+  }
+  #gallery canvas {
+    cursor: pointer;
+    border: 1px solid #1a1a28;
+    transition: border-color 0.1s;
+  }
+  #gallery canvas:hover { border-color: #c89428; }
+  .gallery-label {
+    position: relative;
+  }
+  .gallery-label span {
+    position: absolute;
+    bottom: 2px;
+    right: 3px;
+    font-size: 8px;
+    color: #666;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<h1>Elementary Cellular Automata</h1>
+
+<div class="controls">
+  <div class="ctrl">
+    <label>Rule</label>
+    <input type="number" id="rule" min="0" max="255" value="30">
+    <button id="prev">&larr;</button>
+    <button id="next">&rarr;</button>
+  </div>
+  <div class="ctrl">
+    <label>Initial</label>
+    <select id="init">
+      <option value="single">Single cell</option>
+      <option value="random">Random</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Width</label>
+    <input type="number" id="width" min="20" max="1200" value="501" step="2">
+  </div>
+  <div class="ctrl">
+    <label>Gens</label>
+    <input type="number" id="gens" min="20" max="800" value="250">
+  </div>
+  <div class="ctrl">
+    <label>Preset</label>
+    <select id="preset">
+      <option value="">--</option>
+      <option value="30">30 chaos</option>
+      <option value="110">110 universal</option>
+      <option value="90">90 sierpinski</option>
+      <option value="184">184 traffic</option>
+      <option value="73">73 maze</option>
+      <option value="105">105 crystal</option>
+      <option value="150">150 complex</option>
+      <option value="54">54 class IV</option>
+      <option value="45">45 left chaos</option>
+      <option value="57">57 irregular</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <button id="galleryBtn">All 256</button>
+  </div>
+</div>
+
+<div class="rule-table" id="ruleTable"></div>
+<canvas id="main"></canvas>
+<div id="gallery"></div>
+<div class="note" id="note"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('main');
+const ctx = canvas.getContext('2d');
+const galleryEl = $('gallery');
+
+let bits = [];
+let ruleNum = 30;
+let showGallery = false;
+
+const CLASS_INFO = {
+  0:'I uniform',4:'I uniform',32:'I uniform',36:'I uniform',
+  128:'I uniform',132:'I uniform',160:'I uniform',164:'I uniform',
+  200:'I uniform',204:'I uniform',232:'I uniform',236:'I uniform',
+  8:'I uniform',40:'I uniform',96:'I uniform',136:'I uniform',
+  168:'I uniform',224:'I uniform',
+  1:'II periodic',2:'II periodic',3:'II periodic',5:'II periodic',
+  6:'II periodic',7:'II periodic',9:'II periodic',10:'II periodic',
+  11:'II periodic',12:'II periodic',13:'II periodic',14:'II periodic',
+  15:'II periodic',19:'II periodic',23:'II periodic',24:'II periodic',
+  25:'II periodic',26:'II periodic',27:'II periodic',28:'II periodic',
+  29:'II periodic',33:'II periodic',34:'II periodic',35:'II periodic',
+  37:'II periodic',38:'II periodic',42:'II periodic',43:'II periodic',
+  44:'II periodic',46:'II periodic',50:'II periodic',51:'II periodic',
+  56:'II periodic',58:'II periodic',62:'II periodic',72:'II periodic',
+  74:'II periodic',76:'II periodic',77:'II periodic',78:'II periodic',
+  94:'II periodic',104:'II periodic',108:'II periodic',130:'II periodic',
+  131:'II periodic',132:'II periodic',133:'II periodic',134:'II periodic',
+  138:'II periodic',140:'II periodic',142:'II periodic',152:'II periodic',
+  154:'II periodic',156:'II periodic',162:'II periodic',170:'II periodic',
+  172:'II periodic',178:'II periodic',184:'II periodic',196:'II periodic',
+  206:'II periodic',250:'II periodic',
+  18:'III chaotic',22:'III chaotic',30:'III chaotic',45:'III chaotic',
+  57:'III chaotic',60:'III chaotic',73:'III chaotic',75:'III chaotic',
+  86:'III chaotic',89:'III chaotic',90:'III chaotic',101:'III chaotic',
+  102:'III chaotic',105:'III chaotic',106:'III chaotic',109:'III chaotic',
+  122:'III chaotic',126:'III chaotic',129:'III chaotic',146:'III chaotic',
+  149:'III chaotic',150:'III chaotic',153:'III chaotic',161:'III chaotic',
+  182:'III chaotic',195:'III chaotic',
+  41:'IV complex',54:'IV complex',106:'IV complex',110:'IV complex',
+};
+
+function parseRule(n) {
+  bits = [];
+  for (let i = 7; i >= 0; i--) bits.push((n >> i) & 1);
+}
+
+function apply(l, c, r) {
+  return bits[7 - ((l << 2) | (c << 1) | r)];
+}
+
+function buildTable() {
+  const el = $('ruleTable');
+  el.innerHTML = '';
+  for (let i = 7; i >= 0; i--) {
+    const p = [(i >> 2) & 1, (i >> 1) & 1, i & 1];
+    const o = bits[7 - i];
+    const cell = document.createElement('div');
+    cell.className = 'rule-cell';
+    cell.onclick = () => {
+      bits[7 - i] ^= 1;
+      ruleNum = 0;
+      for (let j = 0; j < 8; j++) ruleNum |= bits[j] << (7 - j);
+      $('rule').value = ruleNum;
+      buildTable();
+      run();
+    };
+    cell.innerHTML =
+      `<div class="nbr">${p.map(v=>`<div class="c ${v?'on':'off'}"></div>`).join('')}</div>` +
+      `<div class="arr">↓</div>` +
+      `<div class="out ${o?'on':'off'}"></div>`;
+    el.appendChild(cell);
+  }
+}
+
+function simulate(w, h, rule) {
+  parseRule(rule);
+  const rows = [new Uint8Array(w)];
+  const mode = $('init').value;
+  if (mode === 'single') {
+    rows[0][Math.floor(w / 2)] = 1;
+  } else {
+    for (let i = 0; i < w; i++) rows[0][i] = Math.random() < 0.5 ? 1 : 0;
+  }
+  for (let g = 1; g < h; g++) {
+    const prev = rows[g - 1];
+    const next = new Uint8Array(w);
+    for (let x = 0; x < w; x++) {
+      next[x] = apply(
+        prev[(x - 1 + w) % w],
+        prev[x],
+        prev[(x + 1) % w]
+      );
+    }
+    rows.push(next);
+  }
+  return rows;
+}
+
+function render(cvs, rows, w, h) {
+  cvs.width = w;
+  cvs.height = h;
+  const c = cvs.getContext('2d');
+  const img = c.createImageData(w, h);
+  const d = img.data;
+  for (let g = 0; g < h; g++) {
+    const row = rows[g];
+    for (let x = 0; x < w; x++) {
+      const idx = (g * w + x) * 4;
+      if (row[x]) {
+        d[idx] = 200; d[idx+1] = 148; d[idx+2] = 40;
+      } else {
+        d[idx] = 11; d[idx+1] = 11; d[idx+2] = 15;
+      }
+      d[idx+3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+}
+
+function run() {
+  if (showGallery) return;
+  const w = parseInt($('width').value) || 501;
+  const h = parseInt($('gens').value) || 250;
+  parseRule(ruleNum);
+  buildTable();
+  const rows = simulate(w, h, ruleNum);
+  render(canvas, rows, w, h);
+  const maxDisp = Math.min(860, window.innerWidth - 40);
+  const scale = Math.min(maxDisp / w, 3);
+  canvas.style.width = Math.floor(w * scale) + 'px';
+  canvas.style.height = Math.floor(h * scale) + 'px';
+  updateNote();
+}
+
+function updateNote() {
+  const cls = CLASS_INFO[ruleNum];
+  const bin = ruleNum.toString(2).padStart(8, '0');
+  let text = `<em>Rule ${ruleNum}</em> (${bin})`;
+  if (cls) {
+    const [c, label] = cls.split(' ');
+    text += ` - Wolfram class ${c} (${label})`;
+  }
+  if (ruleNum === 110) text += '. Proven Turing-complete (Cook 2004)';
+  if (ruleNum === 30) text += '. Used for pseudorandom generation in Mathematica';
+  if (ruleNum === 90) text += '. Produces the Sierpinski triangle; equivalent to XOR of neighbors';
+  if (ruleNum === 184) text += '. Models single-lane traffic flow with conserved particle count';
+  $('note').innerHTML = text;
+}
+
+function buildGallery() {
+  galleryEl.innerHTML = '';
+  const gw = 51, gh = 32;
+  for (let r = 0; r < 256; r++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'gallery-label';
+    wrap.style.display = 'inline-block';
+    const c = document.createElement('canvas');
+    c.title = `Rule ${r}`;
+    const rows = simulate(gw, gh, r);
+    render(c, rows, gw, gh);
+    c.style.width = '51px';
+    c.style.height = '32px';
+    c.onclick = () => {
+      ruleNum = r;
+      $('rule').value = r;
+      showGallery = false;
+      galleryEl.style.display = 'none';
+      canvas.style.display = '';
+      $('ruleTable').style.display = '';
+      $('galleryBtn').textContent = 'All 256';
+      run();
+    };
+    const lbl = document.createElement('span');
+    lbl.textContent = r;
+    wrap.appendChild(c);
+    wrap.appendChild(lbl);
+    galleryEl.appendChild(wrap);
+  }
+}
+
+$('rule').addEventListener('change', () => {
+  ruleNum = Math.max(0, Math.min(255, parseInt($('rule').value) || 0));
+  $('rule').value = ruleNum;
+  run();
+});
+$('init').addEventListener('change', run);
+$('width').addEventListener('change', run);
+$('gens').addEventListener('change', run);
+$('preset').addEventListener('change', () => {
+  const v = $('preset').value;
+  if (!v) return;
+  ruleNum = parseInt(v);
+  $('rule').value = ruleNum;
+  run();
+});
+$('prev').addEventListener('click', () => {
+  ruleNum = (ruleNum - 1 + 256) % 256;
+  $('rule').value = ruleNum;
+  run();
+});
+$('next').addEventListener('click', () => {
+  ruleNum = (ruleNum + 1) % 256;
+  $('rule').value = ruleNum;
+  run();
+});
+$('galleryBtn').addEventListener('click', () => {
+  showGallery = !showGallery;
+  if (showGallery) {
+    canvas.style.display = 'none';
+    $('ruleTable').style.display = 'none';
+    galleryEl.style.display = 'flex';
+    $('galleryBtn').textContent = 'Single';
+    buildGallery();
+  } else {
+    canvas.style.display = '';
+    $('ruleTable').style.display = '';
+    galleryEl.style.display = 'none';
+    $('galleryBtn').textContent = 'All 256';
+    run();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowLeft') { $('prev').click(); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { $('next').click(); e.preventDefault(); }
+});
+
+parseRule(ruleNum);
+run();
+</script>
+</body>
+</html>
